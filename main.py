@@ -1,41 +1,58 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import os
-import psycopg2 # Asegúrate de tener 'psycopg2-binary' en tu requirements.txt
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = FastAPI()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Modelo de datos para la remera
+class Remera(BaseModel):
+    nombre: str
+    talle: str
+    color: str = ""
+    cantidad: int = 0
+    imagen_url: str = ""
+    link_tienda: str = ""
+
+# Función para conectar a la base de datos
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
 @app.get("/")
 def home():
-    db_status = "No conectada"
+    return {"status": "ok", "servicio": "Samcro Stock API", "db_status": "Conectada y lista"}
+
+# Ruta para VER todo el stock
+@app.get("/api/stock")
+def obtener_stock():
     try:
-        # Intentamos conectar a la base de datos
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cur = conn.cursor()
-        
-        # Paso 2.2: Crear las tablas automáticamente si no existen
+        cur.execute("SELECT * FROM stock ORDER BY id DESC;")
+        remeras = cur.fetchall()
+        cur.close()
+        conn.close()
+        return remeras
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Ruta para GUARDAR una remera nueva
+@app.post("/api/stock")
+def agregar_remera(remera: Remera):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS stock (
-                id SERIAL PRIMARY KEY,
-                nombre TEXT NOT NULL,
-                talle TEXT NOT NULL,
-                color TEXT,
-                cantidad INTEGER DEFAULT 0,
-                imagen_url TEXT,
-                link_tienda TEXT,
-                creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
+            INSERT INTO stock (nombre, talle, color, cantidad, imagen_url, link_tienda)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;
+        """, (remera.nombre, remera.talle, remera.color, remera.cantidad, remera.imagen_url, remera.link_tienda))
+        nuevo_id = cur.fetchone()['id']
         conn.commit()
         cur.close()
         conn.close()
-        db_status = "Conectada y tablas creadas"
+        return {"mensaje": "Remera agregada con éxito", "id": nuevo_id}
     except Exception as e:
-        db_status = f"Error: {str(e)}"
-
-    return {
-        "status": "ok",
-        "servicio": "Samcro Stock API",
-        "db_status": db_status
-    }
+        raise HTTPException(status_code=500, detail=str(e))

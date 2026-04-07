@@ -362,18 +362,18 @@ async function buscarProductos(q) {
   if (q.length < 2) { box.style.display='none'; return; }
   const res = await fetch('/api/buscar-productos?q=' + encodeURIComponent(q));
   const items = await res.json();
+  window._sugerencias = items;
   if (!items.length) { box.style.display='none'; return; }
   box.style.display = 'block';
-  box.innerHTML = items.map(p => {
-    const safe = encodeURIComponent(JSON.stringify(p));
-    return '<div class="sugerencias-item" onclick="seleccionarProducto(decodeURIComponent(\'' + safe + '\'))">' +
-      '<img src="' + p.imagen + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.style.display=\'none\'">' +
-      '<span style="font-size:.85rem">' + p.nombre + '</span></div>';
-  }).join('');
+  box.innerHTML = items.map((p, i) =>
+    '<div class="sugerencias-item" onclick="seleccionarProducto(' + i + ')">' +
+    '<img src="' + p.imagen + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.style.display=\'none\'">' +
+    '<span style="font-size:.85rem">' + p.nombre + '</span></div>'
+  ).join('');
 }
 
-function seleccionarProducto(json) {
-  const p = JSON.parse(json);
+ffunction seleccionarProducto(idx) {
+  const p = window._sugerencias[idx];
   document.getElementById('f-nombre').value = p.nombre;
   document.getElementById('f-imagen').value = p.imagen;
   document.getElementById('f-link').value = p.link;

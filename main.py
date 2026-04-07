@@ -4,7 +4,7 @@ import uuid
 import requests
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from psycopg2.extras import RealDictCursor
 import psycopg2
@@ -51,35 +51,10 @@ def init_db():
 
 init_db()
 
-# --- HEALTH CHECK ---
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-# --- AUTH TIENDANUBE ---
-@app.get("/auth/callback")
-def auth_callback(code: str):
-    response = requests.post(
-        "https://www.tiendanube.com/apps/authorize/token",
-        json={
-            "client_id": TN_CLIENT_ID,
-            "client_secret": TN_CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code
-        },
-        headers={"User-Agent": "Samcro Stock (samcroremeras@gmail.com)"}
-    )
-    if response.status_code == 200:
-        data = response.json()
-        return {
-            "ok": True,
-            "TN_ACCESS_TOKEN": data.get("access_token"),
-            "TN_STORE_ID": data.get("user_id"),
-            "instruccion": "Copia estos dos valores y agregalos como variables en Railway"
-        }
-    return {"ok": False, "detalle": response.text}
-
-# --- STOCK API ---
 class Remera(BaseModel):
     nombre: str
     categoria: str = ""
@@ -171,11 +146,10 @@ def exportar_excel():
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers={"Content-Disposition": "attachment; filename=stock.xlsx"})
+    return StreamingResponse(output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=stock.xlsx"})
 
-# --- TOKENS DE CAMBIO ---
 @app.post("/api/tokens")
 def crear_token(orden_nro: str):
     token = str(uuid.uuid4())[:8]
@@ -206,4 +180,247 @@ def pagina_cambio(token: str):
 <head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
 <title>Elegí tu cambio</title></head>
 <body><h1>Orden #{t['orden_nro']}</h1><p>Página del cliente — próximamente.</p></body>
+</html>"""
+
+@app.get("/panel", response_class=HTMLResponse)
+def panel():
+    return """<!DOCTYPE html>
+<html lang='es'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Samcro — Panel de Stock</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5;color:#111}
+header{background:#111;color:#fff;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:1.1rem;font-weight:600;letter-spacing:.05em}
+.actions{display:flex;gap:.5rem}
+.btn{padding:.5rem 1rem;border-radius:6px;border:none;cursor:pointer;font-size:.85rem;font-weight:500}
+.btn-primary{background:#fff;color:#111}
+.btn-success{background:#16a34a;color:#fff}
+.btn-danger{background:#dc2626;color:#fff}
+.btn-blue{background:#2563eb;color:#fff}
+main{padding:1.5rem 2rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat{background:#fff;border-radius:8px;padding:1rem;border:1px solid #e5e5e5}
+.stat p{font-size:.75rem;color:#666;margin-bottom:.25rem}
+.stat h2{font-size:1.5rem;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.card{background:#fff;border-radius:8px;border:1px solid #e5e5e5;overflow:hidden}
+.card img{width:100%;height:180px;object-fit:cover;background:#f0f0f0}
+.card-body{padding:.75rem}
+.card-body h3{font-size:.9rem;font-weight:600;margin-bottom:.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-body p{font-size:.8rem;color:#666}
+.badges{display:flex;gap:.25rem;margin:.4rem 0;flex-wrap:wrap}
+.badge{font-size:.7rem;padding:.15rem .5rem;border-radius:20px;font-weight:500}
+.badge-talle{background:#e0f2fe;color:#0369a1}
+.badge-cat{background:#f0fdf4;color:#15803d}
+.badge-stock{background:#fef9c3;color:#854d0e}
+.card-actions{display:flex;gap:.25rem;margin-top:.5rem}
+.card-actions button{flex:1;padding:.35rem;border-radius:4px;border:none;cursor:pointer;font-size:.75rem}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
+.modal h2{font-size:1rem;font-weight:600;margin-bottom:1rem}
+.field{margin-bottom:.75rem}
+.field label{display:block;font-size:.8rem;color:#666;margin-bottom:.25rem}
+.field input,.field select{width:100%;padding:.5rem;border:1px solid #ddd;border-radius:6px;font-size:.85rem}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.modal-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
+.empty{text-align:center;padding:3rem;color:#999;grid-column:1/-1}
+input[type=file]{display:none}
+.token-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:1rem;margin-top:1rem}
+.token-box p{font-size:.8rem;color:#15803d;margin-bottom:.5rem}
+.token-box a{color:#15803d;font-weight:600;word-break:break-all}
+</style>
+</head>
+<body>
+<header>
+  <h1>SAMCRO — Stock</h1>
+  <div class='actions'>
+    <button class='btn btn-primary' onclick='abrirModal()'>+ Nueva remera</button>
+    <button class='btn btn-blue' onclick='document.getElementById("excel-import").click()'>Importar Excel</button>
+    <button class='btn btn-success' onclick='exportar()'>Exportar Excel</button>
+    <input type='file' id='excel-import' accept='.xlsx' onchange='importar(this)'>
+  </div>
+</header>
+<main>
+  <div class='stats'>
+    <div class='stat'><p>Total remeras</p><h2 id='stat-total'>—</h2></div>
+    <div class='stat'><p>Unidades en stock</p><h2 id='stat-unidades'>—</h2></div>
+    <div class='stat'><p>Sin stock</p><h2 id='stat-sin'>—</h2></div>
+  </div>
+  <div class='grid' id='grid'><p class='empty'>Cargando...</p></div>
+</main>
+
+<div class='modal-bg' id='modal'>
+  <div class='modal'>
+    <h2 id='modal-titulo'>Nueva remera</h2>
+    <input type='hidden' id='edit-id'>
+    <div class='field'><label>Nombre</label><input id='f-nombre' placeholder='Ej: Metallica Black Album'></div>
+    <div class='field-row'>
+      <div class='field'><label>Categoría</label>
+        <select id='f-categoria'>
+          <option>Musica</option><option>Cine y Series</option>
+          <option>Superhéroes</option><option>Videojuegos</option>
+          <option>Autos y Motos</option><option>Otros</option>
+        </select>
+      </div>
+      <div class='field'><label>Talle</label>
+        <select id='f-talle'>
+          <option>XS</option><option>S</option><option>M</option>
+          <option>L</option><option>XL</option><option>XXL</option><option>XXXL</option>
+        </select>
+      </div>
+    </div>
+    <div class='field-row'>
+      <div class='field'><label>Color</label><input id='f-color' placeholder='Ej: negra'></div>
+      <div class='field'><label>Cantidad</label><input id='f-cantidad' type='number' min='0' value='1'></div>
+    </div>
+    <div class='field'><label>URL imagen</label><input id='f-imagen' placeholder='https://...'></div>
+    <div class='field'><label>Link tienda</label><input id='f-link' placeholder='https://samcroremeras.com.ar/...'></div>
+    <div class='modal-actions'>
+      <button class='btn' onclick='cerrarModal()'>Cancelar</button>
+      <button class='btn btn-success' onclick='guardar()'>Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class='modal-bg' id='modal-token'>
+  <div class='modal'>
+    <h2>Generar link de cambio</h2>
+    <div class='field'><label>Número de orden</label><input id='t-orden' placeholder='Ej: 10042'></div>
+    <div class='modal-actions'>
+      <button class='btn' onclick='document.getElementById("modal-token").classList.remove("open")'>Cancelar</button>
+      <button class='btn btn-success' onclick='generarToken()'>Generar link</button>
+    </div>
+    <div class='token-box' id='token-result' style='display:none'>
+      <p>Link generado (expira en 24hs):</p>
+      <a id='token-link' href='#' target='_blank'></a>
+    </div>
+  </div>
+</div>
+
+<script>
+let remeras = [];
+
+async function cargar() {
+  const res = await fetch('/api/stock');
+  remeras = await res.json();
+  renderizar();
+}
+
+function renderizar() {
+  const grid = document.getElementById('grid');
+  const total = remeras.length;
+  const unidades = remeras.reduce((s,r) => s + (r.cantidad||0), 0);
+  const sinStock = remeras.filter(r => r.cantidad === 0).length;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-unidades').textContent = unidades;
+  document.getElementById('stat-sin').textContent = sinStock;
+
+  if (!total) { grid.innerHTML = "<p class='empty'>No hay remeras en stock.</p>"; return; }
+
+  grid.innerHTML = remeras.map(r => `
+    <div class='card'>
+      <img src='${r.imagen_url || ""}' onerror="this.style.display='none'" alt=''>
+      <div class='card-body'>
+        <h3 title='${r.nombre}'>${r.nombre}</h3>
+        <div class='badges'>
+          <span class='badge badge-talle'>${r.talle}</span>
+          <span class='badge badge-cat'>${r.categoria||''}</span>
+          <span class='badge badge-stock'>x${r.cantidad}</span>
+        </div>
+        <p>${r.color||''}</p>
+        <div class='card-actions'>
+          <button class='btn-blue' style='color:#fff;background:#2563eb' onclick='editar(${r.id})'>Editar</button>
+          <button style='background:#fee2e2;color:#dc2626' onclick='eliminar(${r.id})'>Eliminar</button>
+          <button style='background:#f0fdf4;color:#16a34a' onclick='abrirToken(${r.id})'>Link cambio</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function abrirModal(id) {
+  document.getElementById('modal-titulo').textContent = 'Nueva remera';
+  document.getElementById('edit-id').value = '';
+  ['nombre','color','imagen','link'].forEach(f => document.getElementById('f-'+f).value = '');
+  document.getElementById('f-cantidad').value = 1;
+  document.getElementById('modal').classList.add('open');
+}
+
+function cerrarModal() { document.getElementById('modal').classList.remove('open'); }
+
+function editar(id) {
+  const r = remeras.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('modal-titulo').textContent = 'Editar remera';
+  document.getElementById('edit-id').value = id;
+  document.getElementById('f-nombre').value = r.nombre || '';
+  document.getElementById('f-categoria').value = r.categoria || 'Musica';
+  document.getElementById('f-talle').value = r.talle || 'M';
+  document.getElementById('f-color').value = r.color || '';
+  document.getElementById('f-cantidad').value = r.cantidad || 0;
+  document.getElementById('f-imagen').value = r.imagen_url || '';
+  document.getElementById('f-link').value = r.link_tienda || '';
+  document.getElementById('modal').classList.add('open');
+}
+
+async function guardar() {
+  const id = document.getElementById('edit-id').value;
+  const data = {
+    nombre: document.getElementById('f-nombre').value,
+    categoria: document.getElementById('f-categoria').value,
+    talle: document.getElementById('f-talle').value,
+    color: document.getElementById('f-color').value,
+    cantidad: parseInt(document.getElementById('f-cantidad').value) || 0,
+    imagen_url: document.getElementById('f-imagen').value,
+    link_tienda: document.getElementById('f-link').value
+  };
+  const url = id ? `/api/stock/${id}` : '/api/stock';
+  const method = id ? 'PUT' : 'POST';
+  await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+  cerrarModal();
+  cargar();
+}
+
+async function eliminar(id) {
+  if (!confirm('¿Eliminar esta remera?')) return;
+  await fetch(`/api/stock/${id}`, {method:'DELETE'});
+  cargar();
+}
+
+async function importar(input) {
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  const res = await fetch('/api/importar-excel', {method:'POST', body: fd});
+  const data = await res.json();
+  alert(`Importadas: ${data.importadas} remeras`);
+  input.value = '';
+  cargar();
+}
+
+function exportar() { window.location.href = '/api/exportar-excel'; }
+
+function abrirToken(id) {
+  document.getElementById('t-orden').value = '';
+  document.getElementById('token-result').style.display = 'none';
+  document.getElementById('modal-token').classList.add('open');
+}
+
+async function generarToken() {
+  const orden = document.getElementById('t-orden').value;
+  if (!orden) { alert('Ingresá el número de orden'); return; }
+  const res = await fetch(`/api/tokens?orden_nro=${orden}`, {method:'POST'});
+  const data = await res.json();
+  document.getElementById('token-link').textContent = data.link;
+  document.getElementById('token-link').href = data.link;
+  document.getElementById('token-result').style.display = 'block';
+}
+
+cargar();
+</script>
+</body>
 </html>"""

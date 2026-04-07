@@ -111,22 +111,131 @@ def auth_callback(code: str):
     if response.status_code == 200:
         auth_data = response.json()
         return {
-            "mensaje": "¡EXITO! Conexión con Tiendanube lograda.",
-            "instruccion": "Copiá estos 2 valores y agregalos en la pestaña Variables de Railway:",
+            "mensaje": "¡EXITO! Conexion con Tiendanube lograda.",
+            "instruccion": "Copia estos 2 valores y agregalos en la pestaña Variables de Railway:",
             "TN_ACCESS_TOKEN": auth_data.get("access_token"),
             "TN_STORE_ID": auth_data.get("user_id")
         }
     else:
-        return {"error": "Falló la conexión", "detalle": response.text}
+        return {"error": "Fallo la conexion", "detalle": response.text}
 
 # --- INTERFAZ VISUAL (DASHBOARD) ---
-# (Se mantiene exactamente igual que la última vez para ahorrar espacio aquí,
-#  asegurate de NO borrar el código HTML que tenías abajo de todo)
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
     return """
     <!DOCTYPE html>
     <html lang="es">
-    ...
-    </html>
-    """
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Samcro - Panel de Stock</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-100 font-sans">
+        <div class="max-w-6xl mx-auto p-6">
+            <header class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold text-gray-800">Samcro Stock</h1>
+                <div class="space-x-2">
+                    <input type="file" id="excel-file" accept=".xlsx, .xls" class="hidden" onchange="subirExcel(this)">
+                    <button onclick="document.getElementById('excel-file').click()" class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition shadow">
+                        📄 Importar Excel
+                    </button>
+                    <button onclick="abrirModal()" class="bg-black text-white px-6 py-2 rounded-full hover:bg-gray-800 transition shadow">
+                        + Nueva
+                    </button>
+                </div>
+            </header>
+
+            <div id="loading" class="hidden text-center text-blue-600 font-bold mb-4">Cargando Excel... por favor espera.</div>
+
+            <div id="stock-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+        </div>
+
+        <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl">
+                <h2 class="text-2xl font-bold mb-4">Cargar Nueva Remera</h2>
+                <form id="remera-form" class="space-y-4">
+                    
+                    <div>
+                        <input type="text" id="nombre" list="lista-nombres" placeholder="Buscar o escribir nombre del diseño..." class="w-full border p-2 rounded" required autocomplete="off">
+                        <datalist id="lista-nombres"></datalist>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <select id="talle" class="border p-2 rounded">
+                            <option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option>
+                        </select>
+                        <input type="text" id="color" placeholder="Color" class="border p-2 rounded">
+                    </div>
+                    <input type="number" id="cantidad" placeholder="Cantidad" class="w-full border p-2 rounded" required>
+                    <input type="url" id="imagen_url" placeholder="URL de la imagen" class="w-full border p-2 rounded">
+                    <input type="url" id="link_tienda" placeholder="Link a la tienda" class="w-full border p-2 rounded">
+                    <div class="flex justify-end space-x-2 pt-4">
+                        <button type="button" onclick="document.getElementById('modal').classList.add('hidden')" class="text-gray-500 px-4 py-2">Cancelar</button>
+                        <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            async function cargarNombres() {
+                const res = await fetch('/api/nombres-productos');
+                const nombres = await res.json();
+                const datalist = document.getElementById('lista-nombres');
+                datalist.innerHTML = '';
+                nombres.forEach(nombre => {
+                    datalist.innerHTML += `<option value="${nombre}">`;
+                });
+            }
+
+            function abrirModal() {
+                cargarNombres(); // Carga los nombres actualizados cada vez que abrís el modal
+                document.getElementById('modal').classList.remove('hidden');
+            }
+
+            async function cargarStock() {
+                const res = await fetch('/api/stock');
+                const data = await res.json();
+                const grid = document.getElementById('stock-grid');
+                grid.innerHTML = '';
+                
+                data.forEach(item => {
+                    grid.innerHTML += `
+                        <div class="bg-white rounded-lg shadow overflow-hidden border border-gray-200 transition hover:shadow-lg">
+                            <img src="${item.imagen_url || 'https://via.placeholder.com/400x300?text=Samcro+Remeras'}" class="w-full h-48 object-cover bg-gray-100">
+                            <div class="p-4">
+                                <h3 class="font-bold text-lg text-gray-800 truncate">${item.nombre}</h3>
+                                <div class="flex justify-between items-center mt-2">
+                                    <span class="bg-gray-100 px-2 py-1 rounded text-sm font-semibold">Talle: ${item.talle}</span>
+                                    <span class="text-green-600 font-bold">Cant: ${item.cantidad}</span>
+                                </div>
+                                ${item.link_tienda ? `<a href="${item.link_tienda}" target="_blank" class="block text-center mt-4 text-blue-500 text-sm underline">Ver en tienda</a>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            async function subirExcel(input) {
+                if (!input.files[0]) return;
+                
+                const formData = new FormData();
+                formData.append("file", input.files[0]);
+                
+                document.getElementById('loading').classList.remove('hidden');
+                
+                try {
+                    const res = await fetch('/api/importar-excel', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await res.json();
+                    if (res.ok) {
+                        alert(result.mensaje);
+                        cargarStock();
+                    } else {
+                        alert("Hubo un error: " + result.detail);
+                    }

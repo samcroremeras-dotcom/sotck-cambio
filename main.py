@@ -245,7 +245,7 @@ def actualizar_imagenes():
                     "Authentication": f"bearer {TN_ACCESS_TOKEN}",
                     "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
                 },
-                params={"q": r["nombre"], "per_page": 10}
+                params={"q": r["nombre"], "per_page": 10, "category_id": 1031807}
             )
             if res.status_code != 200:
                 continue
@@ -256,10 +256,7 @@ def actualizar_imagenes():
             link = ""
             for p in productos:
                 nombre_tn = p.get("name", {}).get("es", "") or ""
-                categorias = p.get("categories", [])
-                nombres_cat = [c.get("name", {}).get("es", "").lower() for c in categorias]
-                es_remera = any("remera" in c for c in nombres_cat)
-                if nombre_tn.lower().strip() == r["nombre"].lower().strip() and es_remera:
+                if nombre_tn.lower().strip() == r["nombre"].lower().strip():
                     if p.get("images"):
                         imagen = p["images"][0].get("src", "")
                     link = p.get("canonical_url", "") or p.get("permalink", "")
@@ -277,6 +274,7 @@ def actualizar_imagenes():
             continue
     
     return {"ok": True, "actualizadas": actualizadas}
+    
 @app.get("/api/categorias")
 def get_categorias():
     res = requests.get(

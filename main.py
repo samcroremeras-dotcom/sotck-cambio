@@ -197,12 +197,22 @@ def pagina_cambio(token: str):
         return "<h2>Este link ya fue utilizado.</h2>"
     if datetime.now() > t["expira_at"]:
         return "<h2>Este link expiro.</h2>"
-    return f"""<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Elegi tu cambio</title></head>
-<body><h1>Orden #{t["orden_nro"]}</h1><p>Pagina del cliente - proximamente.</p></body>
-</html>"""
+@app.post("/api/confirmar-cambio")
+def confirmar_cambio(data: dict):
+    token = data.get("token")
+    remera_id = data.get("remera_id")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM tokens_cambio WHERE token_id=%s;", (token,))
+            t = cur.fetchone()
+            if not t or t["usado"] or datetime.now() > t["expira_at"]:
+                return {"ok": False}
+            cur.execute("UPDATE tokens_cambio SET usado=TRUE, remera_elegida_id=%s WHERE token_id=%s;", (remera_id, token))
+            cur.execute("UPDATE stock SET cantidad = cantidad - 1 WHERE id=%s;", (remera_id,))
+            cur.execute("DELETE FROM stock WHERE id=%s AND cantidad <= 0;", (remera_id,))
+            conn.commit()
+    return {"ok": True}
+    
 
 @app.get("/api/buscar-productos")
 def buscar_productos(q: str = ""):

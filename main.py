@@ -182,6 +182,31 @@ def pagina_cambio(token: str):
 <body><h1>Orden #{t['orden_nro']}</h1><p>Página del cliente — próximamente.</p></body>
 </html>"""
 
+@app.get("/api/buscar-productos")
+def buscar_productos(q: str = ""):
+    if not q or len(q) < 2:
+        return []
+    res = requests.get(
+        f"https://api.tiendanube.com/v1/{TN_STORE_ID}/products",
+        headers={
+            "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+            "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+        },
+        params={"q": q, "per_page": 10}
+    )
+    if res.status_code != 200:
+        return []
+    productos = res.json()
+    resultado = []
+    for p in productos:
+        nombre = p.get("name", {}).get("es", "") or ""
+        imagen = ""
+        if p.get("images"):
+            imagen = p["images"][0].get("src", "")
+        link = p.get("permalink", "")
+        resultado.append({"nombre": nombre, "imagen": imagen, "link": link})
+    return resultado
+
 @app.get("/panel", response_class=HTMLResponse)
 def panel():
     return """<!DOCTYPE html>
@@ -258,7 +283,10 @@ input[type=file]{display:none}
   <div class='modal'>
     <h2 id='modal-titulo'>Nueva remera</h2>
     <input type='hidden' id='edit-id'>
-    <div class='field'><label>Nombre</label><input id='f-nombre' placeholder='Ej: Metallica Black Album'></div>
+    <div class='field'>
+  <label>Nombre</label>
+  <input id='f-nombre' placeholder='Escribí para buscar...' autocomplete='off' oninput='buscarProductos(this.value)'>
+  <div id='sugerencias' style='border:1px solid #ddd;border-radius:6px;margin-top:4px;display:none;max-height:220px;overflow-y:auto;background:#fff;z-index:200;position:relative'></div>
     <div class='field-row'>
       <div class='field'><label>Categoría</label>
         <select id='f-categoria'>
@@ -303,6 +331,29 @@ input[type=file]{display:none}
 </div>
 
 <script>
+async function buscarProductos(q) {
+  const box = document.getElementById('sugerencias');
+  if (q.length < 2) { box.style.display='none'; return; }
+  const res = await fetch(`/api/buscar-productos?q=${encodeURIComponent(q)}`);
+  const items = await res.json();
+  if (!items.length) { box.style.display='none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = items.map(p => `
+    <div onclick='seleccionarProducto(${JSON.stringify(p).replace(/'/g,"&#39;")})' 
+         style='display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border-bottom:1px solid #f0f0f0'>
+      <img src='${p.imagen}' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>
+      <span style='font-size:.85rem'>${p.nombre}</span>
+    </div>
+  `).join('');
+}
+
+function seleccionarProducto(p) {
+  document.getElementById('f-nombre').value = p.nombre;
+  document.getElementById('f-imagen').value = p.imagen;
+  document.getElementById('f-link').value = p.link;
+  document.getElementById('sugerencias').style.display = 'none';
+}
+
 let remeras = [];
 
 async function cargar() {

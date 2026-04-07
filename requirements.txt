@@ -3,6 +3,5 @@ uvicorn
 psycopg2-binary
 pydantic
 python-multipart
-pandas
 openpyxl
 requests

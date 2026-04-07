@@ -230,7 +230,6 @@ def buscar_productos(q: str = ""):
     return resultado
 
 @app.post("/api/actualizar-imagenes")
-@app.post("/api/actualizar-imagenes")
 def actualizar_imagenes():
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -257,7 +256,10 @@ def actualizar_imagenes():
             link = ""
             for p in productos:
                 nombre_tn = p.get("name", {}).get("es", "") or ""
-                if nombre_tn.lower().strip() == r["nombre"].lower().strip():
+                categorias = p.get("categories", [])
+                nombres_cat = [c.get("name", {}).get("es", "").lower() for c in categorias]
+                es_remera = any("remera" in c for c in nombres_cat)
+                if nombre_tn.lower().strip() == r["nombre"].lower().strip() and es_remera:
                     if p.get("images"):
                         imagen = p["images"][0].get("src", "")
                     link = p.get("canonical_url", "") or p.get("permalink", "")

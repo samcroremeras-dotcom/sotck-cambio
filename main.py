@@ -229,6 +229,48 @@ def buscar_productos(q: str = ""):
         resultado.append({"nombre": nombre, "imagen": imagen, "link": link})
     return resultado
 
+@app.post("/api/actualizar-imagenes")
+def actualizar_imagenes():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nombre FROM stock WHERE imagen_url IS NULL OR imagen_url = '';")
+            remeras = cur.fetchall()
+    
+    actualizadas = 0
+    for r in remeras:
+        try:
+            res = requests.get(
+                f"https://api.tiendanube.com/v1/{TN_STORE_ID}/products",
+                headers={
+                    "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                    "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+                },
+                params={"q": r["nombre"], "per_page": 1}
+            )
+            if res.status_code != 200:
+                continue
+            productos = res.json()
+            if not productos:
+                continue
+            p = productos[0]
+            imagen = ""
+            if p.get("images"):
+                imagen = p["images"][0].get("src", "")
+            link = p.get("canonical_url", "") or p.get("permalink", "")
+            if imagen or link:
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE stock SET imagen_url=%s, link_tienda=%s WHERE id=%s;",
+                            (imagen, link, r["id"])
+                        )
+                        conn.commit()
+                actualizadas += 1
+        except:
+            continue
+    
+    return {"ok": True, "actualizadas": actualizadas}
+
 PANEL_HTML = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -287,6 +329,7 @@ main{padding:1.5rem 2rem}
     <button class="btn btn-white" onclick="abrirModal()">+ Nueva remera</button>
     <button class="btn btn-blue" onclick="document.getElementById('fi').click()">Importar Excel</button>
     <button class="btn btn-green" onclick="exportar()">Exportar Excel</button>
+    <button class="btn" style="background:#7c3aed;color:#fff" onclick="actualizarImagenes()">Actualizar imagenes</button>
     <input type="file" id="fi" accept=".xlsx" style="display:none" onchange="importar(this)">
   </div>
 </header>
@@ -513,6 +556,12 @@ function genToken() {
     });
 }
 
+function actualizarImagenes() {
+  if (!confirm('Esto puede tardar 1-2 minutos. Continuar?')) return;
+  fetch('/api/actualizar-imagenes', {method: 'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(data){ alert('Actualizadas: ' + data.actualizadas + ' remeras'); cargar(); });
+}
 cargar();
 </script>
 </body>

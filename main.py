@@ -355,6 +355,10 @@ main{padding:1.5rem 2rem}
 var remeras = [];
 var sugs = [];
 
+function esc(s) {
+  return (s === null || s === undefined) ? '' : String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 function buscar(q) {
   var box = document.getElementById('sg');
   if (q.length < 2) { box.style.display = 'none'; return; }
@@ -367,8 +371,8 @@ function buscar(q) {
       var html = '';
       for (var i = 0; i < items.length; i++) {
         html += '<div class="sg-item" onclick="elegir(' + i + ')">';
-        html += '<img src="' + items[i].imagen + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.style.display=\'none\'">';
-        html += '<span style="font-size:.85rem">' + items[i].nombre + '</span>';
+        html += '<img src="' + esc(items[i].imagen) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.style.display=\'none\'">';
+        html += '<span style="font-size:.85rem">' + esc(items[i].nombre) + '</span>';
         html += '</div>';
       }
       box.innerHTML = html;
@@ -399,7 +403,7 @@ function renderizar() {
   var sin = 0;
   for (var i = 0; i < remeras.length; i++) {
     unidades += remeras[i].cantidad || 0;
-    if (remeras[i].cantidad === 0) sin++;
+    if (!remeras[i].cantidad) sin++;
   }
   document.getElementById('st').textContent = total;
   document.getElementById('su').textContent = unidades;
@@ -409,15 +413,15 @@ function renderizar() {
   for (var i = 0; i < remeras.length; i++) {
     var r = remeras[i];
     html += '<div class="card">';
-    html += '<img src="' + (r.imagen_url || '') + '" onerror="this.style.display=\'none\'" alt="">';
+    html += '<img src="' + esc(r.imagen_url) + '" onerror="this.style.display=\'none\'" alt="">';
     html += '<div class="card-body">';
-    html += '<h3 title="' + r.nombre + '">' + r.nombre + '</h3>';
+    html += '<h3 title="' + esc(r.nombre) + '">' + esc(r.nombre) + '</h3>';
     html += '<div class="badges">';
-    html += '<span class="badge bt">' + r.talle + '</span>';
-    html += '<span class="badge bc">' + (r.categoria || '') + '</span>';
-    html += '<span class="badge bs">x' + r.cantidad + '</span>';
+    html += '<span class="badge bt">' + esc(r.talle) + '</span>';
+    html += '<span class="badge bc">' + esc(r.categoria) + '</span>';
+    html += '<span class="badge bs">x' + (r.cantidad || 0) + '</span>';
     html += '</div>';
-    html += '<p>' + (r.color || '') + '</p>';
+    html += '<p>' + esc(r.color) + '</p>';
     html += '<div class="card-actions">';
     html += '<button style="color:#fff;background:#2563eb" onclick="editar(' + r.id + ')">Editar</button>';
     html += '<button style="background:#fee2e2;color:#dc2626" onclick="eliminar(' + r.id + ')">Eliminar</button>';

@@ -1,50 +1,41 @@
-import os
 from fastapi import FastAPI
-from sqlalchemy import create_engine, text
+import os
+import psycopg2 # Asegúrate de tener 'psycopg2-binary' en tu requirements.txt
 
 app = FastAPI()
 
-# 1. Leemos la URL de la base de datos desde Railway
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Truco para que Python acepte la URL de Railway
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-# 2. Creamos la conexión
-engine = create_engine(DATABASE_URL)
-
-# 3. Función que crea las tablas apenas arranca la App
-@app.on_event("startup")
-def init_db():
-    with engine.connect() as conn:
-        # Tabla para guardar todas tus remeras de los Excel
-        conn.execute(text("""
+@app.get("/")
+def home():
+    db_status = "No conectada"
+    try:
+        # Intentamos conectar a la base de datos
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        
+        # Paso 2.2: Crear las tablas automáticamente si no existen
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS stock (
                 id SERIAL PRIMARY KEY,
-                nombre TEXT,
+                nombre TEXT NOT NULL,
+                talle TEXT NOT NULL,
                 color TEXT,
-                talle TEXT,
-                cantidad INTEGER,
-                link_tienda TEXT
+                cantidad INTEGER DEFAULT 0,
+                imagen_url TEXT,
+                link_tienda TEXT,
+                creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-        """))
-        # Tabla para los links de 24hs
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS tokens_cambio (
-                token_id TEXT PRIMARY KEY,
-                orden_nro TEXT,
-                talle_sugerido TEXT,
-                expira_at TIMESTAMP,
-                usado BOOLEAN DEFAULT FALSE
-            );
-        """))
+        """)
         conn.commit()
+        cur.close()
+        conn.close()
+        db_status = "Conectada y tablas creadas"
+    except Exception as e:
+        db_status = f"Error: {str(e)}"
 
-@app.get("/")
-def check_status():
     return {
         "status": "ok",
         "servicio": "Samcro Stock API",
-        "db_status": "Conectada y tablas creadas"
+        "db_status": db_status
     }

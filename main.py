@@ -225,7 +225,7 @@ def buscar_productos(q: str = ""):
         imagen = ""
         if p.get("images"):
             imagen = p["images"][0].get("src", "")
-        link = p.get("permalink", "")
+        link = p.get("canonical_url", "") or p.get("permalink", "")
         resultado.append({"nombre": nombre, "imagen": imagen, "link": link})
     return resultado
 
@@ -318,9 +318,11 @@ main{padding:1.5rem 2rem}
       </div>
       <div class="field"><label>Talle</label>
         <select id="ft">
-          <option>XS</option><option>S</option><option>M</option>
-          <option>L</option><option>XL</option><option>XXL</option><option>XXXL</option>
-        </select>
+  <option>XS</option><option>S</option><option>M</option>
+  <option>L</option><option>XL</option><option>XXL</option>
+  <option>XXXL</option><option>4XL</option><option>5XL</option>
+  <option>6XL</option><option>7XL</option>
+</select>
       </div>
     </div>
     <div class="field-row">

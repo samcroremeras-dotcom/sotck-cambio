@@ -230,6 +230,7 @@ def buscar_productos(q: str = ""):
     return resultado
 
 @app.post("/api/actualizar-imagenes")
+@app.post("/api/actualizar-imagenes")
 def actualizar_imagenes():
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -245,18 +246,22 @@ def actualizar_imagenes():
                     "Authentication": f"bearer {TN_ACCESS_TOKEN}",
                     "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
                 },
-                params={"q": r["nombre"], "per_page": 1}
+                params={"q": r["nombre"], "per_page": 10}
             )
             if res.status_code != 200:
                 continue
             productos = res.json()
             if not productos:
                 continue
-            p = productos[0]
             imagen = ""
-            if p.get("images"):
-                imagen = p["images"][0].get("src", "")
-            link = p.get("canonical_url", "") or p.get("permalink", "")
+            link = ""
+            for p in productos:
+                nombre_tn = p.get("name", {}).get("es", "") or ""
+                if nombre_tn.lower().strip() == r["nombre"].lower().strip():
+                    if p.get("images"):
+                        imagen = p["images"][0].get("src", "")
+                    link = p.get("canonical_url", "") or p.get("permalink", "")
+                    break
             if imagen or link:
                 with get_conn() as conn:
                     with conn.cursor() as cur:

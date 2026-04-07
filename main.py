@@ -6,12 +6,9 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import pandas as pd
 import io
-import requests
 
 app = FastAPI()
 DATABASE_URL = os.getenv("DATABASE_URL")
-TN_CLIENT_ID = os.getenv("TN_CLIENT_ID")
-TN_CLIENT_SECRET = os.getenv("TN_CLIENT_SECRET")
 
 class Remera(BaseModel):
     nombre: str
@@ -36,10 +33,12 @@ def obtener_stock():
     conn.close()
     return remeras
 
+# NUEVA RUTA: Obtener nombres únicos para el buscador
 @app.get("/api/nombres-productos")
 def obtener_nombres():
     conn = get_db_connection()
     cur = conn.cursor()
+    # Busca todos los nombres distintos que ya existen en el stock
     cur.execute("SELECT DISTINCT nombre FROM stock ORDER BY nombre ASC;")
     nombres = [row['nombre'] for row in cur.fetchall()]
     cur.close()
@@ -90,34 +89,6 @@ async def importar_excel(file: UploadFile = File(...)):
         return {"status": "success", "mensaje": f"{contador} remeras importadas correctamente"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# --- RUTA PARA CONECTAR TIENDANUBE ---
-
-@app.get("/auth/callback")
-def auth_callback(code: str):
-    url = "https://www.tiendanube.com/apps/authorize/token"
-    data = {
-        "client_id": TN_CLIENT_ID,
-        "client_secret": TN_CLIENT_SECRET,
-        "grant_type": "authorization_code",
-        "code": code
-    }
-    headers = {
-        "User-Agent": "Samcro Stock API (samcroremeras@gmail.com)"
-    }
-    
-    response = requests.post(url, data=data, headers=headers)
-    
-    if response.status_code == 200:
-        auth_data = response.json()
-        return {
-            "mensaje": "¡EXITO! Conexion con Tiendanube lograda.",
-            "instruccion": "Copia estos 2 valores y agregalos en la pestaña Variables de Railway:",
-            "TN_ACCESS_TOKEN": auth_data.get("access_token"),
-            "TN_STORE_ID": auth_data.get("user_id")
-        }
-    else:
-        return {"error": "Fallo la conexion", "detalle": response.text}
 
 # --- INTERFAZ VISUAL (DASHBOARD) ---
 
@@ -193,3 +164,86 @@ def dashboard():
             function abrirModal() {
                 cargarNombres(); // Carga los nombres actualizados cada vez que abrís el modal
                 document.getElementById('modal').classList.remove('hidden');
+            }
+
+            async function cargarStock() {
+                const res = await fetch('/api/stock');
+                const data = await res.json();
+                const grid = document.getElementById('stock-grid');
+                grid.innerHTML = '';
+                
+                data.forEach(item => {
+                    grid.innerHTML += `
+                        <div class="bg-white rounded-lg shadow overflow-hidden border border-gray-200 transition hover:shadow-lg">
+                            <img src="${item.imagen_url || 'https://via.placeholder.com/400x300?text=Samcro+Remeras'}" class="w-full h-48 object-cover bg-gray-100">
+                            <div class="p-4">
+                                <h3 class="font-bold text-lg text-gray-800 truncate">${item.nombre}</h3>
+                                <div class="flex justify-between items-center mt-2">
+                                    <span class="bg-gray-100 px-2 py-1 rounded text-sm font-semibold">Talle: ${item.talle}</span>
+                                    <span class="text-green-600 font-bold">Cant: ${item.cantidad}</span>
+                                </div>
+                                ${item.link_tienda ? `<a href="${item.link_tienda}" target="_blank" class="block text-center mt-4 text-blue-500 text-sm underline">Ver en tienda</a>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            async function subirExcel(input) {
+                if (!input.files[0]) return;
+                
+                const formData = new FormData();
+                formData.append("file", input.files[0]);
+                
+                document.getElementById('loading').classList.remove('hidden');
+                
+                try {
+                    const res = await fetch('/api/importar-excel', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await res.json();
+                    if (res.ok) {
+                        alert(result.mensaje);
+                        cargarStock();
+                    } else {
+                        alert("Hubo un error: " + result.detail);
+                    }
+                } catch (error) {
+                    alert("Error de conexión");
+                } finally {
+                    document.getElementById('loading').classList.add('hidden');
+                    input.value = ''; 
+                }
+            }
+
+            document.getElementById('remera-form').onsubmit = async (e) => {
+                e.preventDefault();
+                const remera = {
+                    nombre: document.getElementById('nombre').value,
+                    talle: document.getElementById('talle').value,
+                    color: document.getElementById('color').value,
+                    cantidad: parseInt(document.getElementById('cantidad').value),
+                    imagen_url: document.getElementById('imagen_url').value,
+                    link_tienda: document.getElementById('link_tienda').value
+                };
+
+                const res = await fetch('/api/stock', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(remera)
+                });
+
+                if (res.ok) {
+                    document.getElementById('modal').classList.add('hidden');
+                    document.getElementById('remera-form').reset();
+                    cargarStock();
+                }
+            };
+
+            cargarStock();
+        </script>
+    </body>
+    </html>
+    """

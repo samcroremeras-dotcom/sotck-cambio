@@ -277,7 +277,17 @@ def actualizar_imagenes():
             continue
     
     return {"ok": True, "actualizadas": actualizadas}
-
+@app.get("/api/categorias")
+def get_categorias():
+    res = requests.get(
+        f"https://api.tiendanube.com/v1/{TN_STORE_ID}/categories",
+        headers={
+            "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+            "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+        }
+    )
+    return res.json()
+    
 PANEL_HTML = """<!DOCTYPE html>
 <html lang="es">
 <head>

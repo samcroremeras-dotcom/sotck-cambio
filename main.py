@@ -55,6 +55,28 @@ init_db()
 def health():
     return {"status": "ok"}
 
+@app.get("/auth/callback")
+def auth_callback(code: str):
+    response = requests.post(
+        "https://www.tiendanube.com/apps/authorize/token",
+        json={
+            "client_id": TN_CLIENT_ID,
+            "client_secret": TN_CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code
+        },
+        headers={"User-Agent": "Samcro Stock (samcroremeras@gmail.com)"}
+    )
+    if response.status_code == 200:
+        data = response.json()
+        return {
+            "ok": True,
+            "TN_ACCESS_TOKEN": data.get("access_token"),
+            "TN_STORE_ID": data.get("user_id"),
+            "instruccion": "Copia estos dos valores y agregalos como variables en Railway"
+        }
+    return {"ok": False, "detalle": response.text}
+
 class Remera(BaseModel):
     nombre: str
     categoria: str = ""
@@ -224,7 +246,6 @@ header h1{font-size:1.1rem;font-weight:600;letter-spacing:.05em}
 .btn{padding:.5rem 1rem;border-radius:6px;border:none;cursor:pointer;font-size:.85rem;font-weight:500}
 .btn-primary{background:#fff;color:#111}
 .btn-success{background:#16a34a;color:#fff}
-.btn-danger{background:#dc2626;color:#fff}
 .btn-blue{background:#2563eb;color:#fff}
 main{padding:1.5rem 2rem}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem}
@@ -258,6 +279,8 @@ input[type=file]{display:none}
 .token-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:1rem;margin-top:1rem}
 .token-box p{font-size:.8rem;color:#15803d;margin-bottom:.5rem}
 .token-box a{color:#15803d;font-weight:600;word-break:break-all}
+.sugerencias-item{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border-bottom:1px solid #f0f0f0}
+.sugerencias-item:hover{background:#f9f9f9}
 </style>
 </head>
 <body>
@@ -284,9 +307,10 @@ input[type=file]{display:none}
     <h2 id='modal-titulo'>Nueva remera</h2>
     <input type='hidden' id='edit-id'>
     <div class='field'>
-  <label>Nombre</label>
-  <input id='f-nombre' placeholder='Escribí para buscar...' autocomplete='off' oninput='buscarProductos(this.value)'>
-  <div id='sugerencias' style='border:1px solid #ddd;border-radius:6px;margin-top:4px;display:none;max-height:220px;overflow-y:auto;background:#fff;z-index:200;position:relative'></div>
+      <label>Nombre</label>
+      <input id='f-nombre' placeholder='Escribí para buscar...' autocomplete='off' oninput='buscarProductos(this.value)'>
+      <div id='sugerencias' style='border:1px solid #ddd;border-radius:6px;margin-top:4px;display:none;max-height:220px;overflow-y:auto;background:#fff;position:relative;z-index:200'></div>
+    </div>
     <div class='field-row'>
       <div class='field'><label>Categoría</label>
         <select id='f-categoria'>
@@ -331,30 +355,30 @@ input[type=file]{display:none}
 </div>
 
 <script>
+let remeras = [];
+
 async function buscarProductos(q) {
   const box = document.getElementById('sugerencias');
   if (q.length < 2) { box.style.display='none'; return; }
-  const res = await fetch(`/api/buscar-productos?q=${encodeURIComponent(q)}`);
+  const res = await fetch('/api/buscar-productos?q=' + encodeURIComponent(q));
   const items = await res.json();
   if (!items.length) { box.style.display='none'; return; }
   box.style.display = 'block';
-  box.innerHTML = items.map(p => `
-    <div onclick='seleccionarProducto(${JSON.stringify(p).replace(/'/g,"&#39;")})' 
-         style='display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border-bottom:1px solid #f0f0f0'>
-      <img src='${p.imagen}' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>
-      <span style='font-size:.85rem'>${p.nombre}</span>
-    </div>
-  `).join('');
+  box.innerHTML = items.map(p => {
+    const safe = encodeURIComponent(JSON.stringify(p));
+    return '<div class="sugerencias-item" onclick="seleccionarProducto(decodeURIComponent(\'' + safe + '\'))">' +
+      '<img src="' + p.imagen + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.style.display=\'none\'">' +
+      '<span style="font-size:.85rem">' + p.nombre + '</span></div>';
+  }).join('');
 }
 
-function seleccionarProducto(p) {
+function seleccionarProducto(json) {
+  const p = JSON.parse(json);
   document.getElementById('f-nombre').value = p.nombre;
   document.getElementById('f-imagen').value = p.imagen;
   document.getElementById('f-link').value = p.link;
   document.getElementById('sugerencias').style.display = 'none';
 }
-
-let remeras = [];
 
 async function cargar() {
   const res = await fetch('/api/stock');
@@ -370,9 +394,7 @@ function renderizar() {
   document.getElementById('stat-total').textContent = total;
   document.getElementById('stat-unidades').textContent = unidades;
   document.getElementById('stat-sin').textContent = sinStock;
-
   if (!total) { grid.innerHTML = "<p class='empty'>No hay remeras en stock.</p>"; return; }
-
   grid.innerHTML = remeras.map(r => `
     <div class='card'>
       <img src='${r.imagen_url || ""}' onerror="this.style.display='none'" alt=''>
@@ -385,20 +407,24 @@ function renderizar() {
         </div>
         <p>${r.color||''}</p>
         <div class='card-actions'>
-          <button class='btn-blue' style='color:#fff;background:#2563eb' onclick='editar(${r.id})'>Editar</button>
-          <button style='background:#fee2e2;color:#dc2626' onclick='eliminar(${r.id})'>Eliminar</button>
-          <button style='background:#f0fdf4;color:#16a34a' onclick='abrirToken(${r.id})'>Link cambio</button>
+          <button style='color:#fff;background:#2563eb;border-radius:4px;border:none;padding:.35rem;cursor:pointer;font-size:.75rem;flex:1' onclick='editar(${r.id})'>Editar</button>
+          <button style='background:#fee2e2;color:#dc2626;border-radius:4px;border:none;padding:.35rem;cursor:pointer;font-size:.75rem;flex:1' onclick='eliminar(${r.id})'>Eliminar</button>
+          <button style='background:#f0fdf4;color:#16a34a;border-radius:4px;border:none;padding:.35rem;cursor:pointer;font-size:.75rem;flex:1' onclick='abrirToken(${r.id})'>Link cambio</button>
         </div>
       </div>
     </div>
   `).join('');
 }
 
-function abrirModal(id) {
+function abrirModal() {
   document.getElementById('modal-titulo').textContent = 'Nueva remera';
   document.getElementById('edit-id').value = '';
-  ['nombre','color','imagen','link'].forEach(f => document.getElementById('f-'+f).value = '');
+  document.getElementById('f-nombre').value = '';
+  document.getElementById('f-color').value = '';
+  document.getElementById('f-imagen').value = '';
+  document.getElementById('f-link').value = '';
   document.getElementById('f-cantidad').value = 1;
+  document.getElementById('sugerencias').style.display = 'none';
   document.getElementById('modal').classList.add('open');
 }
 
@@ -430,7 +456,7 @@ async function guardar() {
     imagen_url: document.getElementById('f-imagen').value,
     link_tienda: document.getElementById('f-link').value
   };
-  const url = id ? `/api/stock/${id}` : '/api/stock';
+  const url = id ? '/api/stock/' + id : '/api/stock';
   const method = id ? 'PUT' : 'POST';
   await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
   cerrarModal();
@@ -439,7 +465,7 @@ async function guardar() {
 
 async function eliminar(id) {
   if (!confirm('¿Eliminar esta remera?')) return;
-  await fetch(`/api/stock/${id}`, {method:'DELETE'});
+  await fetch('/api/stock/' + id, {method:'DELETE'});
   cargar();
 }
 
@@ -448,7 +474,7 @@ async function importar(input) {
   fd.append('file', input.files[0]);
   const res = await fetch('/api/importar-excel', {method:'POST', body: fd});
   const data = await res.json();
-  alert(`Importadas: ${data.importadas} remeras`);
+  alert('Importadas: ' + data.importadas + ' remeras');
   input.value = '';
   cargar();
 }
@@ -464,7 +490,7 @@ function abrirToken(id) {
 async function generarToken() {
   const orden = document.getElementById('t-orden').value;
   if (!orden) { alert('Ingresá el número de orden'); return; }
-  const res = await fetch(`/api/tokens?orden_nro=${orden}`, {method:'POST'});
+  const res = await fetch('/api/tokens?orden_nro=' + orden, {method:'POST'});
   const data = await res.json();
   document.getElementById('token-link').textContent = data.link;
   document.getElementById('token-link').href = data.link;

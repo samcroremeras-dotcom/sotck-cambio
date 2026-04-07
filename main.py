@@ -371,7 +371,7 @@ function buscar(q) {
       var html = '';
       for (var i = 0; i < items.length; i++) {
         html += '<div class="sg-item" onclick="elegir(' + i + ')">';
-        html += '<img src="' + esc(items[i].imagen) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.style.display=\'none\'">';
+       html += '<img src="' + esc(items[i].imagen) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.style.display=&quot;none&quot;">';
         html += '<span style="font-size:.85rem">' + esc(items[i].nombre) + '</span>';
         html += '</div>';
       }
@@ -413,7 +413,7 @@ function renderizar() {
   for (var i = 0; i < remeras.length; i++) {
     var r = remeras[i];
     html += '<div class="card">';
-    html += '<img src="' + esc(r.imagen_url) + '" onerror="this.style.display=\'none\'" alt="">';
+    html += '<img src="' + esc(r.imagen_url) + '" onerror="this.style.display=&quot;none&quot;" alt="">';
     html += '<div class="card-body">';
     html += '<h3 title="' + esc(r.nombre) + '">' + esc(r.nombre) + '</h3>';
     html += '<div class="badges">';

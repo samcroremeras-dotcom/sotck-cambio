@@ -58,7 +58,10 @@ def health():
 
 # --- AUTH TIENDANUBE ---
 @app.get("/auth/callback")
-def auth_callback(code: str):
+def auth_callback(code: str = None):
+    if not code:
+        return {"error": "no llegó el code"}
+    
     response = requests.post(
         "https://www.tiendanube.com/apps/authorize/token",
         json={
@@ -69,15 +72,13 @@ def auth_callback(code: str):
         },
         headers={"User-Agent": "Samcro Stock (samcroremeras@gmail.com)"}
     )
-    if response.status_code == 200:
-        data = response.json()
-        return {
-            "ok": True,
-            "TN_ACCESS_TOKEN": data.get("access_token"),
-            "TN_STORE_ID": data.get("user_id"),
-            "instruccion": "Copia estos dos valores y agregalos como variables en Railway"
-        }
-    return {"ok": False, "detalle": response.text}
+    return {
+        "code_recibido": code,
+        "status_tiendanube": response.status_code,
+        "respuesta_tiendanube": response.text,
+        "client_id_cargado": TN_CLIENT_ID is not None,
+        "secret_cargado": TN_CLIENT_SECRET is not None
+    }
 
 # --- STOCK API ---
 class Remera(BaseModel):

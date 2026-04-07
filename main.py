@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import pandas as pd
+import io
 
 app = FastAPI()
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -45,6 +47,39 @@ def agregar_remera(remera: Remera):
     conn.close()
     return {"status": "success", "id": nuevo_id}
 
+@app.post("/api/importar-excel")
+async def importar_excel(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        # Leemos el Excel
+        df = pd.read_excel(io.BytesIO(contents))
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Iteramos sobre las filas del Excel y guardamos en la base de datos
+        contador = 0
+        for index, row in df.iterrows():
+            cur.execute("""
+                INSERT INTO stock (nombre, talle, color, cantidad, imagen_url, link_tienda)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                str(row.get('nombre', '')),
+                str(row.get('talle', '')),
+                str(row.get('color', '')),
+                int(row.get('cantidad', 0) if pd.notna(row.get('cantidad')) else 0),
+                str(row.get('imagen_url', '')),
+                str(row.get('link_tienda', ''))
+            ))
+            contador += 1
+            
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"status": "success", "mensaje": f"{contador} remeras importadas correctamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- INTERFAZ VISUAL (DASHBOARD) ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -57,19 +92,25 @@ def dashboard():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Samcro - Panel de Stock</title>
         <script src="https://cdn.tailwindcss.com"></script>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     </head>
     <body class="bg-gray-100 font-sans">
         <div class="max-w-6xl mx-auto p-6">
             <header class="flex justify-between items-center mb-8">
                 <h1 class="text-3xl font-bold text-gray-800">Samcro Stock</h1>
-                <button onclick="document.getElementById('modal').classList.remove('hidden')" class="bg-black text-white px-6 py-2 rounded-full hover:bg-gray-800 transition">
-                    + Nueva Remera
-                </button>
+                <div class="space-x-2">
+                    <input type="file" id="excel-file" accept=".xlsx, .xls" class="hidden" onchange="subirExcel(this)">
+                    <button onclick="document.getElementById('excel-file').click()" class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition shadow">
+                        📄 Importar Excel
+                    </button>
+                    <button onclick="document.getElementById('modal').classList.remove('hidden')" class="bg-black text-white px-6 py-2 rounded-full hover:bg-gray-800 transition shadow">
+                        + Nueva
+                    </button>
+                </div>
             </header>
 
-            <div id="stock-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                </div>
+            <div id="loading" class="hidden text-center text-blue-600 font-bold mb-4">Cargando Excel... por favor espera.</div>
+
+            <div id="stock-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
         </div>
 
         <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
@@ -84,7 +125,7 @@ def dashboard():
                         <input type="text" id="color" placeholder="Color" class="border p-2 rounded">
                     </div>
                     <input type="number" id="cantidad" placeholder="Cantidad" class="w-full border p-2 rounded" required>
-                    <input type="url" id="imagen_url" placeholder="URL de la imagen (link directo)" class="w-full border p-2 rounded" required>
+                    <input type="url" id="imagen_url" placeholder="URL de la imagen" class="w-full border p-2 rounded">
                     <input type="url" id="link_tienda" placeholder="Link a la tienda" class="w-full border p-2 rounded">
                     <div class="flex justify-end space-x-2 pt-4">
                         <button type="button" onclick="document.getElementById('modal').classList.add('hidden')" class="text-gray-500 px-4 py-2">Cancelar</button>
@@ -104,18 +145,47 @@ def dashboard():
                 data.forEach(item => {
                     grid.innerHTML += `
                         <div class="bg-white rounded-lg shadow overflow-hidden border border-gray-200 transition hover:shadow-lg">
-                            <img src="${item.imagen_url}" class="w-full h-48 object-cover bg-gray-200" onerror="this.src='https://via.placeholder.com/200?text=Sin+Imagen'">
+                            <img src="${item.imagen_url || 'https://via.placeholder.com/400x300?text=Samcro+Remeras'}" class="w-full h-48 object-cover bg-gray-100">
                             <div class="p-4">
                                 <h3 class="font-bold text-lg text-gray-800 truncate">${item.nombre}</h3>
                                 <div class="flex justify-between items-center mt-2">
                                     <span class="bg-gray-100 px-2 py-1 rounded text-sm font-semibold">Talle: ${item.talle}</span>
                                     <span class="text-green-600 font-bold">Cant: ${item.cantidad}</span>
                                 </div>
-                                <a href="${item.link_tienda}" target="_blank" class="block text-center mt-4 text-blue-500 text-sm underline">Ver en tienda</a>
+                                ${item.link_tienda ? `<a href="${item.link_tienda}" target="_blank" class="block text-center mt-4 text-blue-500 text-sm underline">Ver en tienda</a>` : ''}
                             </div>
                         </div>
                     `;
                 });
+            }
+
+            async function subirExcel(input) {
+                if (!input.files[0]) return;
+                
+                const formData = new FormData();
+                formData.append("file", input.files[0]);
+                
+                document.getElementById('loading').classList.remove('hidden');
+                
+                try {
+                    const res = await fetch('/api/importar-excel', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await res.json();
+                    if (res.ok) {
+                        alert(result.mensaje);
+                        cargarStock();
+                    } else {
+                        alert("Hubo un error: " + result.detail);
+                    }
+                } catch (error) {
+                    alert("Error de conexión");
+                } finally {
+                    document.getElementById('loading').classList.add('hidden');
+                    input.value = ''; // Resetear el input
+                }
             }
 
             document.getElementById('remera-form').onsubmit = async (e) => {

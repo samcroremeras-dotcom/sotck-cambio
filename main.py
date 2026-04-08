@@ -204,13 +204,13 @@ def pagina_cambio(token: str):
             cur.execute("SELECT * FROM stock WHERE cantidad > 0 ORDER BY talle, nombre;")
             remeras = cur.fetchall()
             
-    remeras_json = json.dumps([{
+  remeras_json = json.dumps([{
         "id": r["id"],
-        "nombre": r["nombre"],
-        "talle": r["talle"],
-        "color": r["color"] or "",
-        "imagen_url": r["imagen_url"] or "",
-        "link_tienda": r["link_tienda"] or ""
+        "nombre": str(r["nombre"] or ""),
+        "talle": str(r["talle"] or ""),
+        "color": str(r["color"] or ""),
+        "imagen_url": str(r["imagen_url"] or ""),
+        "link_tienda": str(r["link_tienda"] or "")
     } for r in remeras])
 
     orden_nro = t["orden_nro"]

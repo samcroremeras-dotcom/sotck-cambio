@@ -197,6 +197,187 @@ def pagina_cambio(token: str):
         return "<h2>Este link ya fue utilizado.</h2>"
     if datetime.now() > t["expira_at"]:
         return "<h2>Este link expiro.</h2>"
+        with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM stock WHERE cantidad > 0 ORDER BY talle, nombre;")
+            remeras = cur.fetchall()
+
+    remeras_json = json.dumps([{
+        "id": r["id"],
+        "nombre": r["nombre"],
+        "talle": r["talle"],
+        "color": r["color"] or "",
+        "imagen_url": r["imagen_url"] or "",
+        "link_tienda": r["link_tienda"] or ""
+    } for r in remeras])
+
+    orden_nro = t["orden_nro"]
+    token_id = t["token_id"]
+
+    html = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elegi tu cambio - Samcro Remeras</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5;color:#111;min-height:100vh}
+header{background:#111;color:#fff;padding:1rem 1.5rem;text-align:center}
+header h1{font-size:1rem;font-weight:600;letter-spacing:.05em}
+header p{font-size:.8rem;color:#aaa;margin-top:2px}
+.paso{display:none;padding:1.5rem}
+.paso.activo{display:block}
+.paso-titulo{font-size:1.1rem;font-weight:600;margin-bottom:.5rem}
+.paso-sub{font-size:.85rem;color:#666;margin-bottom:1.5rem}
+.talles{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin-bottom:1.5rem}
+.talle-btn{border:1.5px solid #ddd;border-radius:8px;padding:.75rem;text-align:center;font-size:.9rem;font-weight:500;background:#fff;cursor:pointer}
+.talle-btn.sel{border-color:#111;background:#111;color:#fff}
+.guia-link{font-size:.8rem;color:#2563eb;text-align:center;display:block;margin-bottom:1.5rem}
+.btn-primary{width:100%;padding:.85rem;border-radius:8px;background:#111;color:#fff;border:none;font-size:.95rem;font-weight:500;cursor:pointer}
+.btn-primary:disabled{background:#ccc}
+.grid-remeras{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem;margin-bottom:1.5rem}
+.remera-card{background:#fff;border-radius:10px;border:2px solid transparent;overflow:hidden;cursor:pointer}
+.remera-card.sel{border-color:#111}
+.remera-card img{width:100%;height:160px;object-fit:cover;background:#f0f0f0}
+.remera-card .info{padding:.6rem}
+.remera-card h3{font-size:.8rem;font-weight:600;margin-bottom:2px}
+.remera-card p{font-size:.75rem;color:#666}
+.confirm-box{background:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem;border:1px solid #e5e5e5}
+.confirm-box label{font-size:.75rem;color:#666}
+.confirm-box p{font-size:.95rem;font-weight:500;margin-top:2px}
+.success{text-align:center;padding:2rem 1.5rem}
+.success-icon{width:60px;height:60px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem}
+.timer{font-size:.75rem;color:#dc2626;text-align:center;margin-bottom:1rem}
+.volver{background:none;border:none;color:#666;font-size:.85rem;cursor:pointer;margin-bottom:1rem;padding:0}
+</style>
+</head>
+<body>
+<header>
+  <h1>SAMCRO REMERAS</h1>
+  <p>Orden #""" + str(orden_nro) + """ &middot; Link valido por 24hs</p>
+</header>
+
+<div id="p1" class="paso activo">
+  <p class="paso-titulo" style="margin-top:1rem">Que talle usas?</p>
+  <p class="paso-sub">Si no estas seguro usa la guia de medidas.</p>
+  <div class="talles" id="talles-grid"></div>
+  <a class="guia-link" href="https://www.samcroremeras.com.ar/guia-de-talles/" target="_blank">No se mi talle, ver guia de medidas</a>
+  <button class="btn-primary" id="btn-ver" onclick="verOpciones()" disabled>Ver opciones disponibles</button>
+</div>
+
+<div id="p2" class="paso">
+  <button class="volver" onclick="irPaso(1)">volver</button>
+  <p class="paso-titulo">Opciones en talle <span id="talle-elegido"></span></p>
+  <p class="paso-sub">Toca la que mas te guste.</p>
+  <div class="grid-remeras" id="grid-remeras"></div>
+</div>
+
+<div id="p3" class="paso">
+  <button class="volver" onclick="irPaso(2)">volver</button>
+  <p class="paso-titulo">Confirma tu eleccion</p>
+  <p class="paso-sub" style="margin-bottom:1rem">Una vez confirmado te avisamos cuando llega.</p>
+  <div class="timer" id="timer"></div>
+  <div class="confirm-box"><label>Remera elegida</label><p id="conf-nombre"></p></div>
+  <div class="confirm-box"><label>Talle</label><p id="conf-talle"></p></div>
+  <div class="confirm-box"><label>Color</label><p id="conf-color"></p></div>
+  <button class="btn-primary" onclick="confirmar()">Confirmar cambio</button>
+</div>
+
+<div id="p4" class="paso">
+  <div class="success">
+    <div class="success-icon">OK</div>
+    <h2 style="font-size:1.1rem;margin-bottom:.5rem">Listo, recibimos tu eleccion</h2>
+    <p style="font-size:.85rem;color:#666;line-height:1.6">Te vamos a escribir por WhatsApp para coordinar el envio. Gracias por tu paciencia.</p>
+  </div>
+</div>
+
+<script>
+var remeras = """ + remeras_json + """;
+var tallesSel = '';
+var remeraSel = null;
+var timerInterval = null;
+var TOKEN = '""" + str(token_id) + """';
+
+(function init() {
+  var ts = {};
+  remeras.forEach(function(r) { ts[r.talle] = true; });
+  var talles = Object.keys(ts).sort();
+  var g = document.getElementById('talles-grid');
+  talles.forEach(function(t) {
+    var b = document.createElement('button');
+    b.className = 'talle-btn';
+    b.textContent = t;
+    b.onclick = function() {
+      document.querySelectorAll('.talle-btn').forEach(function(x){ x.classList.remove('sel'); });
+      b.classList.add('sel');
+      tallesSel = t;
+      document.getElementById('btn-ver').disabled = false;
+    };
+    g.appendChild(b);
+  });
+})();
+
+function irPaso(n) {
+  document.querySelectorAll('.paso').forEach(function(p){ p.classList.remove('activo'); });
+  document.getElementById('p' + n).classList.add('activo');
+}
+
+function verOpciones() {
+  var filtradas = remeras.filter(function(r){ return r.talle === tallesSel; });
+  var g = document.getElementById('grid-remeras');
+  document.getElementById('talle-elegido').textContent = tallesSel;
+  if (!filtradas.length) {
+    g.innerHTML = '<p style="color:#666;font-size:.85rem;grid-column:1/-1">No hay opciones en este talle.</p>';
+  } else {
+    g.innerHTML = filtradas.map(function(r) {
+      return '<div class="remera-card" onclick="selRemera(' + r.id + ', this)">' +
+        '<img src="' + r.imagen_url + '" onerror="this.style.display=\'none\'" alt="">' +
+        '<div class="info"><h3>' + r.nombre + '</h3><p>' + r.color + '</p></div></div>';
+    }).join('');
+  }
+  irPaso(2);
+}
+
+function selRemera(id, el) {
+  remeraSel = remeras.find(function(r){ return r.id === id; });
+  document.querySelectorAll('.remera-card').forEach(function(c){ c.classList.remove('sel'); });
+  el.classList.add('sel');
+  document.getElementById('conf-nombre').textContent = remeraSel.nombre;
+  document.getElementById('conf-talle').textContent = remeraSel.talle;
+  document.getElementById('conf-color').textContent = remeraSel.color || '-';
+  iniciarTimer();
+  setTimeout(function(){ irPaso(3); }, 300);
+}
+
+function iniciarTimer() {
+  var seg = 600;
+  clearInterval(timerInterval);
+  timerInterval = setInterval(function() {
+    seg--;
+    var m = Math.floor(seg / 60);
+    var s = seg % 60;
+    document.getElementById('timer').textContent = 'Esta seleccion se reserva por ' + m + ':' + (s < 10 ? '0' : '') + s + ' minutos';
+    if (seg <= 0) { clearInterval(timerInterval); }
+  }, 1000);
+}
+
+function confirmar() {
+  if (!remeraSel) return;
+  fetch('/api/confirmar-cambio', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: TOKEN, remera_id: remeraSel.id})
+  }).then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.ok) { irPaso(4); }
+      else { alert('Hubo un error, intenta de nuevo.'); }
+    });
+}
+</script>
+</body>
+</html>"""
+    return html
 @app.post("/api/confirmar-cambio")
 def confirmar_cambio(data: dict):
     token = data.get("token")

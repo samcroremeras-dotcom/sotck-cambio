@@ -238,7 +238,7 @@ header p{font-size:.8rem;color:#aaa;margin-top:2px}
 .guia-link{font-size:.8rem;color:#2563eb;text-align:center;display:block;margin-bottom:1.5rem}
 .btn-primary{width:100%;padding:.85rem;border-radius:8px;background:#111;color:#fff;border:none;font-size:.95rem;font-weight:500;cursor:pointer}
 .btn-primary:disabled{background:#ccc}
-.grid-remeras{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem;margin-bottom:1.5rem}
+.grid-remeras{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem;margin-bottom:1.5rem}
 .remera-card{background:#fff;border-radius:10px;border:2px solid transparent;overflow:hidden;cursor:pointer}
 .remera-card.sel{border-color:#111}
 .remera-card img{width:100%;height:200px;object-fit:contain;background:#f5f5f5;padding:8px}

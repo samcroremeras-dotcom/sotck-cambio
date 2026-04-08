@@ -333,7 +333,7 @@ function verOpciones() {
   } else {
     g.innerHTML = filtradas.map(function(r) {
       return '<div class="remera-card" onclick="selRemera(' + r.id + ', this)">' +
-        '<img src="' + r.imagen_url + '" onerror="this.style.display=\'none\'" alt="">' +
+        '<img src="' + r.imagen_url + '" onerror="this.style.display=&quot;none&quot;" alt="">' +
         '<div class="info"><h3>' + r.nombre + '</h3><p>' + r.color + '</p></div></div>';
     }).join('');
   }

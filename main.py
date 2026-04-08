@@ -241,7 +241,7 @@ header p{font-size:.8rem;color:#aaa;margin-top:2px}
 .grid-remeras{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem;margin-bottom:1.5rem}
 .remera-card{background:#fff;border-radius:10px;border:2px solid transparent;overflow:hidden;cursor:pointer}
 .remera-card.sel{border-color:#111}
-.remera-card img{width:100%;height:160px;object-fit:cover;background:#f0f0f0}
+.remera-card img{width:100%;height:200px;object-fit:contain;background:#f5f5f5;padding:8px}
 .remera-card .info{padding:.6rem}
 .remera-card h3{font-size:.8rem;font-weight:600;margin-bottom:2px}
 .remera-card p{font-size:.75rem;color:#666}

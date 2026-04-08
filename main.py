@@ -199,7 +199,7 @@ def pagina_cambio(token: str):
     if datetime.now() > t["expira_at"]:
         return "<h2>Este link expiro.</h2>"
 
-   with get_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM stock WHERE cantidad > 0 ORDER BY talle, nombre;")
             remeras = cur.fetchall()

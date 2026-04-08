@@ -199,12 +199,12 @@ def pagina_cambio(token: str):
     if datetime.now() > t["expira_at"]:
         return "<h2>Este link expiro.</h2>"
 
-    with get_conn() as conn:
+   with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM stock WHERE cantidad > 0 ORDER BY talle, nombre;")
             remeras = cur.fetchall()
-            
-  remeras_json = json.dumps([{
+
+    remeras_json = json.dumps([{
         "id": r["id"],
         "nombre": str(r["nombre"] or ""),
         "talle": str(r["talle"] or ""),

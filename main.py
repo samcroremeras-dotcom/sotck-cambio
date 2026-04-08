@@ -391,7 +391,7 @@ def confirmar_cambio(data: dict):
                 return {"ok": False}
             cur.execute("UPDATE tokens_cambio SET usado=TRUE, remera_elegida_id=%s WHERE token_id=%s;", (remera_id, token))
             cur.execute("UPDATE stock SET cantidad = cantidad - 1 WHERE id=%s;", (remera_id,))
-            cur.execute("DELETE FROM stock WHERE id=%s AND cantidad <= 0;", (remera_id,))
+            cur.execute("UPDATE stock SET cantidad = 0 WHERE id=%s AND cantidad <= 0;", (remera_id,))
             conn.commit()
     return {"ok": True}
     

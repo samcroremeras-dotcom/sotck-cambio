@@ -300,8 +300,7 @@ var tallesSel = '';
 var remeraSel = null;
 var timerInterval = null;
 var TOKEN = '""" + str(token_id) + """';
-
-(function init() {
+window.onload = function() {
   var ts = {};
   remeras.forEach(function(r) { ts[r.talle] = true; });
   var talles = Object.keys(ts).sort();
@@ -318,7 +317,7 @@ var TOKEN = '""" + str(token_id) + """';
     };
     g.appendChild(b);
   });
-})();
+};
 
 function irPaso(n) {
   document.querySelectorAll('.paso').forEach(function(p){ p.classList.remove('activo'); });

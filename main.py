@@ -174,15 +174,15 @@ def exportar_excel():
         headers={"Content-Disposition": "attachment; filename=stock.xlsx"})
 
 @app.post("/api/tokens")
-def crear_token(orden_nro: str):
+def crear_token(orden_nro: str, cantidad: int = 1):
     token = str(uuid.uuid4())[:8]
-    expira = datetime.now() + timedelta(hours=24)
+    expira = datetime.now() + timedelta(hours=72)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO tokens_cambio (token_id, orden_nro, expira_at)
-                VALUES (%s, %s, %s);
-            """, (token, orden_nro, expira))
+                INSERT INTO tokens_cambio (token_id, orden_nro, expira_at, cantidad_cambios)
+                VALUES (%s, %s, %s, %s);
+            """, (token, orden_nro, expira, cantidad))
             conn.commit()
     return {"token": token, "link": f"https://samcro-stock-production.up.railway.app/cambios/{token}"}
 
@@ -382,19 +382,21 @@ function confirmar() {
 @app.post("/api/confirmar-cambio")
 def confirmar_cambio(data: dict):
     token = data.get("token")
-    remera_id = data.get("remera_id")
+    remeras_ids = data.get("remeras_ids", [])
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM tokens_cambio WHERE token_id=%s;", (token,))
             t = cur.fetchone()
             if not t or t["usado"] or datetime.now() > t["expira_at"]:
-                return {"ok": False}
-            cur.execute("UPDATE tokens_cambio SET usado=TRUE, remera_elegida_id=%s WHERE token_id=%s;", (remera_id, token))
-            cur.execute("UPDATE stock SET cantidad = cantidad - 1 WHERE id=%s;", (remera_id,))
-            cur.execute("UPDATE stock SET cantidad = 0 WHERE id=%s AND cantidad <= 0;", (remera_id,))
+                return {"ok": False, "error": "token invalido"}
+            if len(remeras_ids) != t["cantidad_cambios"]:
+                return {"ok": False, "error": "cantidad incorrecta"}
+            cur.execute("UPDATE tokens_cambio SET usado=TRUE, remeras_elegidas=%s WHERE token_id=%s;",
+                (json.dumps(remeras_ids), token))
+            for rid in remeras_ids:
+                cur.execute("UPDATE stock SET cantidad = cantidad - 1 WHERE id=%s;", (rid,))
             conn.commit()
-    return {"ok": True}
-    
+    return {"ok": True}    
 
 @app.get("/api/buscar-productos")
 def buscar_productos(q: str = ""):
@@ -586,19 +588,29 @@ main{padding:1.5rem 2rem}
       <button class="btn btn-green" onclick="guardar()">Guardar</button>
     </div>
   </div>
-</div>
 
 <div class="modal-bg" id="mtoken">
   <div class="modal">
     <h2>Generar link de cambio</h2>
     <div class="field"><label>Numero de orden</label><input id="torden" placeholder="10042"></div>
+    <div class="field"><label>Cantidad de remeras a cambiar</label>
+      <select id="tcantidad">
+        <option value="1">1 remera</option>
+        <option value="2">2 remeras</option>
+        <option value="3">3 remeras</option>
+        <option value="4">4 remeras</option>
+      </select>
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="document.getElementById('mtoken').classList.remove('open')">Cancelar</button>
       <button class="btn btn-green" onclick="genToken()">Generar link</button>
     </div>
     <div class="token-box" id="tresult" style="display:none">
-      <p>Link generado (expira en 24hs):</p>
+      <p>Link generado (expira en 72hs):</p>
       <a id="tlink" href="#" target="_blank"></a>
+    </div>
+  </div>
+</div>
     </div>
   </div>
 </div>

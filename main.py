@@ -952,7 +952,7 @@ function renderLista() {
   productos.forEach(function(p) {
     var sel = seleccionados.has(p.id);
     html += '<div class="prod-item' + (sel ? ' sel' : '') + '" id="pi-' + p.id + '" onclick="toggle(' + p.id + ')">';
-    html += '<img src="' + (p.imagen || '') + '" onerror="this.style.display=\'none\'" alt="">';
+    html += '<img src="' + (p.imagen || '') + '" onerror="this.style.display=&quot;none&quot;" alt="">';
     html += '<div class="pinfo">';
     html += '<input type="checkbox" ' + (sel ? 'checked' : '') + ' onclick="event.stopPropagation();toggle(' + p.id + ')">';
     html += '<span>' + esc(p.nombre) + '</span>';

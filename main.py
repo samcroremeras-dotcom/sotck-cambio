@@ -811,7 +811,6 @@ def listar_productos_remeras():
             break
         page += 1
    return todos
-
 class SubirImagenPayload(BaseModel):
     product_ids: list
     filename: str

@@ -588,6 +588,7 @@ main{padding:1.5rem 2rem}
       <button class="btn btn-green" onclick="guardar()">Guardar</button>
     </div>
   </div>
+</div>
 
 <div class="modal-bg" id="mtoken">
   <div class="modal">

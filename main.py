@@ -810,8 +810,9 @@ def listar_productos_remeras():
         if len(data) < 200:
             break
         page += 1
-    return todos
-    class SubirImagenPayload(BaseModel):
+   return todos
+
+class SubirImagenPayload(BaseModel):
     product_ids: list
     filename: str
     attachment: str

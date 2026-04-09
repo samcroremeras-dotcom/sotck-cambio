@@ -783,7 +783,251 @@ cargar();
 </script>
 </body>
 </html>"""
+@app.get("/api/productos-remeras")
+def listar_productos_remeras():
+    todos = []
+    page = 1
+    while True:
+        res = requests.get(
+            f"https://api.tiendanube.com/v1/{TN_STORE_ID}/products",
+            headers={
+                "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+            },
+            params={"category_id": 1031807, "per_page": 200, "page": page}
+        )
+        if res.status_code != 200:
+            break
+        data = res.json()
+        if not data:
+            break
+        for p in data:
+            todos.append({
+                "id": p["id"],
+                "nombre": p.get("name", {}).get("es", "") or "",
+                "imagen": p["images"][0]["src"] if p.get("images") else ""
+            })
+        if len(data) < 200:
+            break
+        page += 1
+    return todos
+    class SubirImagenPayload(BaseModel):
+    product_ids: list
+    filename: str
+    attachment: str
 
+@app.post("/api/subir-tabla-talles")
+def subir_tabla_talles(payload: SubirImagenPayload):
+    ok = []
+    errores = []
+    for pid in payload.product_ids:
+        res = requests.post(
+            f"https://api.tiendanube.com/v1/{TN_STORE_ID}/products/{pid}/images",
+            headers={
+                "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                "User-Agent": "Samcro Stock (samcroremeras@gmail.com)",
+                "Content-Type": "application/json"
+            },
+            json={"attachment": payload.attachment, "filename": payload.filename}
+        )
+        if res.status_code in (200, 201):
+            ok.append(pid)
+        else:
+            errores.append({"id": pid, "error": res.text})
+    return {"ok": len(ok), "errores": errores}
 @app.get("/panel", response_class=HTMLResponse)
 def panel():
     return PANEL_HTML
+
+TABLA_TALLES_HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Subir tabla de talles - Samcro</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5;color:#111}
+header{background:#111;color:#fff;padding:1rem 2rem}
+header h1{font-size:1.1rem;font-weight:600}
+main{padding:1.5rem 2rem;max-width:900px}
+.card{background:#fff;border-radius:8px;border:1px solid #e5e5e5;padding:1.5rem;margin-bottom:1rem}
+.btn{padding:.6rem 1.2rem;border-radius:6px;border:none;cursor:pointer;font-size:.9rem;font-weight:500}
+.btn-green{background:#16a34a;color:#fff}
+.btn-blue{background:#2563eb;color:#fff}
+.drop{border:2px dashed #ddd;border-radius:8px;padding:2rem;text-align:center;cursor:pointer;margin-bottom:1rem}
+.drop.over{border-color:#2563eb;background:#eff6ff}
+.lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-top:1rem}
+.prod-item{background:#fff;border:1.5px solid #e5e5e5;border-radius:8px;overflow:hidden;cursor:pointer}
+.prod-item.sel{border-color:#111;background:#f9f9f9}
+.prod-item img{width:100%;height:130px;object-fit:contain;background:#f5f5f5;padding:4px}
+.prod-item .pinfo{padding:.5rem;display:flex;align-items:center;gap:.4rem}
+.prod-item input[type=checkbox]{width:16px;height:16px;cursor:pointer}
+.prod-item span{font-size:.78rem;font-weight:500;line-height:1.3}
+.barra{background:#e5e5e5;border-radius:4px;height:10px;margin-top:.5rem}
+.progreso{height:10px;border-radius:4px;background:#16a34a;width:0;transition:width .3s}
+.log{font-size:.8rem;color:#666;margin-top:.5rem;max-height:150px;overflow-y:auto}
+.acciones{display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<header><h1>SAMCRO — Subir tabla de talles</h1></header>
+<main>
+  <div class="card">
+    <h2 style="font-size:1rem;margin-bottom:1rem">1. Elegi la imagen de la tabla de talles</h2>
+    <div class="drop" id="drop" onclick="document.getElementById('fi').click()"
+         ondragover="event.preventDefault();this.classList.add('over')"
+         ondragleave="this.classList.remove('over')"
+         ondrop="onDrop(event)">
+      <p style="color:#666;font-size:.9rem">Arrastra o hace click para subir la imagen</p>
+      <input type="file" id="fi" accept="image/*" style="display:none" onchange="onFile(this.files[0])">
+    </div>
+    <img id="prev" style="max-height:180px;max-width:100%;border-radius:6px;display:none;margin:0 auto">
+    <p id="fname" style="font-size:.8rem;color:#666;margin-top:.5rem;text-align:center"></p>
+  </div>
+  <div class="card">
+    <h2 style="font-size:1rem;margin-bottom:1rem">2. Selecciona los productos</h2>
+    <div class="acciones">
+      <button class="btn btn-blue" onclick="cargarProductos()" id="btn-cargar">Cargar productos</button>
+      <button class="btn" onclick="toggleTodos(true)" style="background:#f0f0f0">Seleccionar todos</button>
+      <button class="btn" onclick="toggleTodos(false)" style="background:#f0f0f0">Deseleccionar todos</button>
+      <span id="contador" style="font-size:.85rem;color:#666"></span>
+    </div>
+    <div class="lista" id="lista"><p style="color:#999;font-size:.85rem">Carga los productos primero.</p></div>
+  </div>
+  <div class="card">
+    <h2 style="font-size:1rem;margin-bottom:.75rem">3. Subir</h2>
+    <button class="btn btn-green" onclick="subir()" id="btn-subir" disabled>Subir imagen a productos seleccionados</button>
+    <div class="barra" style="margin-top:1rem;display:none" id="barra-cont">
+      <div class="progreso" id="progreso"></div>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+</main>
+<script>
+var imgBase64 = '';
+var imgFilename = '';
+var productos = [];
+var seleccionados = new Set();
+
+function onFile(file) {
+  if (!file) return;
+  imgFilename = file.name;
+  document.getElementById('fname').textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    imgBase64 = dataUrl.split(',')[1];
+    var prev = document.getElementById('prev');
+    prev.src = dataUrl;
+    prev.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop').classList.remove('over');
+  var f = e.dataTransfer.files[0];
+  if (f) onFile(f);
+}
+
+function cargarProductos() {
+  document.getElementById('lista').innerHTML = '<p style="color:#999;font-size:.85rem">Cargando...</p>';
+  document.getElementById('btn-cargar').disabled = true;
+  fetch('/api/productos-remeras')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      productos = data;
+      seleccionados = new Set(data.map(function(p){ return p.id; }));
+      renderLista();
+      actualizarContador();
+      document.getElementById('btn-subir').disabled = false;
+      document.getElementById('btn-cargar').disabled = false;
+    });
+}
+
+function renderLista() {
+  var html = '';
+  productos.forEach(function(p) {
+    var sel = seleccionados.has(p.id);
+    html += '<div class="prod-item' + (sel ? ' sel' : '') + '" id="pi-' + p.id + '" onclick="toggle(' + p.id + ')">';
+    html += '<img src="' + (p.imagen || '') + '" onerror="this.style.display=\'none\'" alt="">';
+    html += '<div class="pinfo">';
+    html += '<input type="checkbox" ' + (sel ? 'checked' : '') + ' onclick="event.stopPropagation();toggle(' + p.id + ')">';
+    html += '<span>' + esc(p.nombre) + '</span>';
+    html += '</div></div>';
+  });
+  document.getElementById('lista').innerHTML = html || '<p style="color:#999;font-size:.85rem">Sin productos.</p>';
+}
+
+function toggle(id) {
+  if (seleccionados.has(id)) seleccionados.delete(id);
+  else seleccionados.add(id);
+  var el = document.getElementById('pi-' + id);
+  if (el) {
+    el.classList.toggle('sel', seleccionados.has(id));
+    var cb = el.querySelector('input[type=checkbox]');
+    if (cb) cb.checked = seleccionados.has(id);
+  }
+  actualizarContador();
+}
+
+function toggleTodos(val) {
+  if (val) productos.forEach(function(p){ seleccionados.add(p.id); });
+  else seleccionados.clear();
+  renderLista();
+  actualizarContador();
+}
+
+function actualizarContador() {
+  document.getElementById('contador').textContent = seleccionados.size + ' de ' + productos.length + ' seleccionados';
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function subir() {
+  if (!imgBase64) { alert('Primero subi una imagen.'); return; }
+  var ids = Array.from(seleccionados);
+  if (!ids.length) { alert('Selecciona al menos un producto.'); return; }
+  if (!confirm('Subir imagen a ' + ids.length + ' productos?')) return;
+  document.getElementById('btn-subir').disabled = true;
+  document.getElementById('barra-cont').style.display = 'block';
+  var log = document.getElementById('log');
+  log.innerHTML = '';
+  var ok = 0;
+  var errores = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var pid = ids[i];
+    var prod = productos.find(function(p){ return p.id === pid; });
+    var pct = Math.round(((i+1) / ids.length) * 100);
+    document.getElementById('progreso').style.width = pct + '%';
+    log.innerHTML += '<div>Subiendo a &quot;' + esc(prod ? prod.nombre : pid) + '&quot;... ';
+    try {
+      var r = await fetch('/api/subir-tabla-talles', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({product_ids: [pid], filename: imgFilename, attachment: imgBase64})
+      });
+      var data = await r.json();
+      if (data.ok > 0) { ok++; log.innerHTML += '<span style="color:#16a34a">OK</span></div>'; }
+      else { errores++; log.innerHTML += '<span style="color:#dc2626">Error: ' + esc(JSON.stringify(data.errores)) + '</span></div>'; }
+    } catch(e) {
+      errores++;
+      log.innerHTML += '<span style="color:#dc2626">Error de red</span></div>';
+    }
+    log.scrollTop = log.scrollHeight;
+    await new Promise(function(res){ setTimeout(res, 600); });
+  }
+  log.innerHTML += '<div style="font-weight:600;margin-top:.5rem">Listo: ' + ok + ' OK, ' + errores + ' errores</div>';
+  document.getElementById('btn-subir').disabled = false;
+}
+</script>
+</body>
+</html>"""
+
+@app.get("/tabla-talles", response_class=HTMLResponse)
+def tabla_talles():
+    return TABLA_TALLES_HTML

@@ -611,10 +611,7 @@ main{padding:1.5rem 2rem}
     </div>
   </div>
 </div>
-    </div>
-  </div>
-</div>
-
+   
 <script>
 var remeras = [];
 var sugs = [];

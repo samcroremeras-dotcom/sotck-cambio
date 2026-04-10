@@ -984,6 +984,7 @@ function cargarProductos() {
       renderLista();
       actualizarContador();
       document.getElementById('btn-subir').disabled = false;
+      document.getElementById('btn-eliminar').disabled = false;
       document.getElementById('btn-cargar').disabled = false;
     });
 }

@@ -94,6 +94,39 @@ def obtener_stock():
             cur.execute("SELECT * FROM stock ORDER BY id DESC;")
             return cur.fetchall()
 
+@app.post("/api/eliminar-ultima-imagen")
+def eliminar_ultima_imagen(data: dict):
+    product_ids = data.get("product_ids", [])
+    ok = []
+    errores = []
+    for pid in product_ids:
+        # Traer imágenes del producto
+        res = requests.get(
+            f"https://api.tiendanube.com/v1/{TN_STORE_ID}/products/{pid}/images",
+            headers={
+                "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+            }
+        )
+        if res.status_code != 200 or not res.json():
+            errores.append({"id": pid, "error": "no se pudieron traer imagenes"})
+            continue
+        imagenes = res.json()
+        ultima = imagenes[-1]
+        # Borrar la última
+        res2 = requests.delete(
+            f"https://api.tiendanube.com/v1/{TN_STORE_ID}/products/{pid}/images/{ultima['id']}",
+            headers={
+                "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+            }
+        )
+        if res2.status_code in (200, 201, 204):
+            ok.append(pid)
+        else:
+            errores.append({"id": pid, "error": res2.text})
+    return {"ok": len(ok), "errores": errores}
+    
 @app.post("/api/stock")
 def agregar_remera(r: Remera):
     with get_conn() as conn:
@@ -549,6 +582,14 @@ main{padding:1.5rem 2rem}
     <div class="stat"><p>Sin stock</p><h2 id="ss">-</h2></div>
   </div>
   <div class="grid" id="grid"><p class="empty">Cargando...</p></div>
+  <div class="card">
+    <h2 style="font-size:1rem;margin-bottom:.75rem">4. Eliminar ultima imagen</h2>
+    <button class="btn" onclick="eliminarUltima()" id="btn-eliminar" disabled style="background:#fee2e2;color:#dc2626">Eliminar ultima imagen de productos seleccionados</button>
+    <div class="barra" style="margin-top:1rem;display:none" id="barra-cont2">
+      <div class="progreso" id="progreso2"></div>
+    </div>
+    <div class="log" id="log2"></div>
+  </div>
 </main>
 
 <div class="modal-bg" id="modal">
@@ -987,7 +1028,40 @@ function actualizarContador() {
 function esc(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-
+async function eliminarUltima() {
+  var ids = Array.from(seleccionados);
+  if (!ids.length) { alert('Selecciona al menos un producto.'); return; }
+  if (!confirm('Eliminar la ultima imagen de ' + ids.length + ' productos?')) return;
+  document.getElementById('btn-eliminar').disabled = true;
+  document.getElementById('barra-cont2').style.display = 'block';
+  var log = document.getElementById('log2');
+  log.innerHTML = '';
+  var ok = 0;
+  var errores = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var pid = ids[i];
+    var prod = productos.find(function(p){ return p.id === pid; });
+    document.getElementById('progreso2').style.width = Math.round(((i+1)/ids.length)*100) + '%';
+    log.innerHTML += '<div>Eliminando de &quot;' + esc(prod ? prod.nombre : pid) + '&quot;... ';
+    try {
+      var r = await fetch('/api/eliminar-ultima-imagen', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({product_ids: [pid]})
+      });
+      var data = await r.json();
+      if (data.ok > 0) { ok++; log.innerHTML += '<span style="color:#16a34a">OK</span></div>'; }
+      else { errores++; log.innerHTML += '<span style="color:#dc2626">Error</span></div>'; }
+    } catch(e) {
+      errores++;
+      log.innerHTML += '<span style="color:#dc2626">Error de red</span></div>';
+    }
+    log.scrollTop = log.scrollHeight;
+    await new Promise(function(res){ setTimeout(res, 600); });
+  }
+  log.innerHTML += '<div style="font-weight:600;margin-top:.5rem">Listo: ' + ok + ' OK, ' + errores + ' errores</div>';
+  document.getElementById('btn-eliminar').disabled = false;
+}
 async function subir() {
   if (!imgBase64) { alert('Primero subi una imagen.'); return; }
   var ids = Array.from(seleccionados);

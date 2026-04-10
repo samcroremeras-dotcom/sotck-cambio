@@ -582,14 +582,6 @@ main{padding:1.5rem 2rem}
     <div class="stat"><p>Sin stock</p><h2 id="ss">-</h2></div>
   </div>
   <div class="grid" id="grid"><p class="empty">Cargando...</p></div>
-  <div class="card">
-    <h2 style="font-size:1rem;margin-bottom:.75rem">4. Eliminar ultima imagen</h2>
-    <button class="btn" onclick="eliminarUltima()" id="btn-eliminar" disabled style="background:#fee2e2;color:#dc2626">Eliminar ultima imagen de productos seleccionados</button>
-    <div class="barra" style="margin-top:1rem;display:none" id="barra-cont2">
-      <div class="progreso" id="progreso2"></div>
-    </div>
-    <div class="log" id="log2"></div>
-  </div>
 </main>
 
 <div class="modal-bg" id="modal">
@@ -913,7 +905,15 @@ main{padding:1.5rem 2rem;max-width:900px}
 </head>
 <body>
 <header><h1>SAMCRO — Subir tabla de talles</h1></header>
-<main>
+ <div class="card">
+    <h2 style="font-size:1rem;margin-bottom:.75rem">4. Eliminar ultima imagen</h2>
+    <button class="btn" onclick="eliminarUltima()" id="btn-eliminar" disabled style="background:#fee2e2;color:#dc2626">Eliminar ultima imagen de productos seleccionados</button>
+    <div class="barra" style="margin-top:1rem;display:none" id="barra-cont2">
+      <div class="progreso" id="progreso2"></div>
+    </div>
+    <div class="log" id="log2"></div>
+  </div>
+</main>
   <div class="card">
     <h2 style="font-size:1rem;margin-bottom:1rem">1. Elegi la imagen de la tabla de talles</h2>
     <div class="drop" id="drop" onclick="document.getElementById('fi').click()"

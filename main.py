@@ -18,6 +18,9 @@ TN_CLIENT_ID = os.getenv("TN_CLIENT_ID")
 TN_CLIENT_SECRET = os.getenv("TN_CLIENT_SECRET")
 TN_ACCESS_TOKEN = os.getenv("TN_ACCESS_TOKEN")
 TN_STORE_ID = os.getenv("TN_STORE_ID")
+TN_ENVIO_PRODUCT_ID = os.getenv("TN_ENVIO_PRODUCT_ID")
+TN_ENVIO_VARIANT_ID = os.getenv("TN_ENVIO_VARIANT_ID")
+TN_ENVIO_PRECIO = os.getenv("TN_ENVIO_PRECIO", "0")
 
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -52,6 +55,10 @@ def init_db():
                 ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS productos_originales JSONB;
                 ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS finalizado BOOLEAN DEFAULT FALSE;
                 ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS creado_en TIMESTAMP DEFAULT NOW();
+                ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS cliente_paga_envio BOOLEAN DEFAULT FALSE;
+                ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS cliente_id BIGINT;
+                ALTER TABLE cambios ADD COLUMN IF NOT EXISTS orden_envio_tn_id BIGINT;
+                ALTER TABLE cambios ADD COLUMN IF NOT EXISTS orden_envio_tn_number TEXT;
 
                 CREATE TABLE IF NOT EXISTS cambios (
                     id SERIAL PRIMARY KEY,
@@ -264,8 +271,47 @@ def _tn_buscar_orden(orden_nro: str):
         return None
 
 
+def _tn_crear_orden_envio(cliente_id, cliente_email, cliente_nombre, orden_nro_origen):
+    """Crea una orden de venta en TN con el item ENVIO CORREO ARGENTINO."""
+    if not TN_ENVIO_PRODUCT_ID:
+        return None, "TN_ENVIO_PRODUCT_ID no configurado"
+    payload = {
+        "contact_email": cliente_email,
+        "contact_name": cliente_nombre,
+        "products": [{
+            "product_id": int(TN_ENVIO_PRODUCT_ID),
+            "variant_id": int(TN_ENVIO_VARIANT_ID) if TN_ENVIO_VARIANT_ID else None,
+            "quantity": 1,
+            "price": str(TN_ENVIO_PRECIO)
+        }],
+        "note": f"Envio cambio - orden original #{orden_nro_origen}",
+        "send_confirmation_email": True,
+        "send_fulfillment_email": False
+    }
+    if cliente_id:
+        payload["customer_id"] = int(cliente_id)
+    payload["products"] = [{k: v for k, v in p.items() if v is not None} for p in payload["products"]]
+    try:
+        res = requests.post(
+            f"https://api.tiendanube.com/v1/{TN_STORE_ID}/orders",
+            headers={
+                "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                "User-Agent": "Samcro Stock (samcroremeras@gmail.com)",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=20
+        )
+        if res.status_code not in (200, 201):
+            return None, f"TN respondio {res.status_code}: {res.text[:200]}"
+        data = res.json()
+        return data, None
+    except Exception as e:
+        return None, str(e)
+
+
 @app.post("/api/tokens")
-def crear_token(orden_nro: str):
+def crear_token(orden_nro: str, cliente_paga_envio: bool = False):
     orden = _tn_buscar_orden(orden_nro)
     if not orden:
         raise HTTPException(status_code=404, detail="Orden no encontrada en Tienda Nube")
@@ -273,6 +319,7 @@ def crear_token(orden_nro: str):
     cliente = orden.get("customer") or {}
     cliente_email = (cliente.get("email") or "").lower().strip()
     cliente_nombre = cliente.get("name") or ""
+    cliente_id = cliente.get("id")
 
     productos_originales = []
     for prod in (orden.get("products") or []):
@@ -294,9 +341,11 @@ def crear_token(orden_nro: str):
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO tokens_cambio
-                  (token_id, orden_nro, expira_at, cliente_email, cliente_nombre, productos_originales, finalizado)
-                VALUES (%s, %s, %s, %s, %s, %s, FALSE);
-            """, (token, str(orden_nro), expira, cliente_email, cliente_nombre, json.dumps(productos_originales)))
+                  (token_id, orden_nro, expira_at, cliente_email, cliente_nombre, cliente_id,
+                   productos_originales, finalizado, cliente_paga_envio)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, %s);
+            """, (token, str(orden_nro), expira, cliente_email, cliente_nombre, cliente_id,
+                  json.dumps(productos_originales), bool(cliente_paga_envio)))
             conn.commit()
 
     return {
@@ -305,7 +354,8 @@ def crear_token(orden_nro: str):
         "cliente_email": cliente_email,
         "cliente_nombre": cliente_nombre,
         "productos_originales": productos_originales,
-        "expira_at": expira.isoformat()
+        "expira_at": expira.isoformat(),
+        "cliente_paga_envio": bool(cliente_paga_envio)
     }
 
 
@@ -434,14 +484,15 @@ def guardar_seleccion(payload: GuardarSeleccionPayload):
 def listar_cambios_pendientes(estado: str = ""):
     with get_conn() as conn:
         with conn.cursor() as cur:
+            base = """
+                SELECT c.*, COALESCE(t.cliente_paga_envio, FALSE) AS cliente_paga_envio
+                FROM cambios c
+                LEFT JOIN tokens_cambio t ON t.token_id = c.token_id
+            """
             if estado:
-                cur.execute("SELECT * FROM cambios WHERE estado=%s ORDER BY creado_en DESC;", (estado,))
+                cur.execute(base + " WHERE c.estado=%s ORDER BY c.creado_en DESC;", (estado,))
             else:
-                cur.execute("""
-                    SELECT * FROM cambios
-                    WHERE estado IN ('pendiente_recepcion','pendiente_aprobacion')
-                    ORDER BY creado_en DESC;
-                """)
+                cur.execute(base + " WHERE c.estado IN ('pendiente_recepcion','pendiente_aprobacion') ORDER BY c.creado_en DESC;")
             return cur.fetchall()
 
 
@@ -484,8 +535,38 @@ def aprobar_cambio(cambio_id: int, payload: AprobarPayload):
                 INSERT INTO cambios_historial (cambio_id, token_id, accion, datos)
                 VALUES (%s,%s,'aprobado',%s);
             """, (cambio_id, c["token_id"], json.dumps({"aprobado_por": payload.aprobado_por})))
+
+            # Si el cliente paga el envio, crear la orden TN con el item ENVIO CORREO ARGENTINO
+            cur.execute("""
+                SELECT cliente_paga_envio, cliente_id, cliente_email, cliente_nombre, orden_nro
+                FROM tokens_cambio WHERE token_id=%s;
+            """, (c["token_id"],))
+            t = cur.fetchone() or {}
+            envio_info = None
+            if t.get("cliente_paga_envio"):
+                data, err = _tn_crear_orden_envio(
+                    t.get("cliente_id"),
+                    t.get("cliente_email") or c.get("cliente_email"),
+                    t.get("cliente_nombre") or "",
+                    t.get("orden_nro")
+                )
+                if data:
+                    cur.execute("""
+                        UPDATE cambios SET orden_envio_tn_id=%s, orden_envio_tn_number=%s WHERE id=%s;
+                    """, (data.get("id"), str(data.get("number") or ""), cambio_id))
+                    cur.execute("""
+                        INSERT INTO cambios_historial (cambio_id, token_id, accion, datos)
+                        VALUES (%s,%s,'orden_envio_creada',%s);
+                    """, (cambio_id, c["token_id"], json.dumps({"orden_id": data.get("id"), "number": data.get("number")})))
+                    envio_info = {"creada": True, "number": data.get("number")}
+                else:
+                    cur.execute("""
+                        INSERT INTO cambios_historial (cambio_id, token_id, accion, datos)
+                        VALUES (%s,%s,'orden_envio_error',%s);
+                    """, (cambio_id, c["token_id"], json.dumps({"error": err})))
+                    envio_info = {"creada": False, "error": err}
             conn.commit()
-    return {"ok": True}
+    return {"ok": True, "envio": envio_info}
 
 
 class RechazarPayload(BaseModel):
@@ -1343,7 +1424,14 @@ main{padding:0}
   <div class="modal">
     <h2>Generar link de cambio</h2>
     <div class="field"><label>Numero de orden de Tienda Nube</label><input id="torden" placeholder="10042"></div>
-    <p style="font-size:.75rem;color:#666;margin-top:-.4rem;margin-bottom:.75rem">Buscamos la orden y sus productos en Tienda Nube automaticamente.</p>
+    <p style="font-size:.7rem;color:var(--ink-mute);margin-top:-.4rem;margin-bottom:.85rem;font-family:var(--mono);letter-spacing:.08em">// Buscamos la orden y sus productos en TN automaticamente</p>
+    <div class="field" style="background:var(--surface-2);padding:.85rem;border:1px solid var(--line)">
+      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;margin:0;color:var(--ink);text-transform:none;letter-spacing:0;font-family:var(--sans);font-size:.85rem;font-weight:500">
+        <input type="checkbox" id="tenvio" style="width:auto;margin:0">
+        Cliente paga envio del cambio
+      </label>
+      <p style="font-size:.7rem;color:var(--ink-mute);margin-top:.4rem;margin-left:1.5rem">Si esta marcado, al aprobar el cambio se crea una orden en TN con "ENVIO CORREO ARGENTINO" para que el cliente abone.</p>
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="document.getElementById('mtoken').classList.remove('open')">Cerrar</button>
       <button class="btn btn-green" id="tbtn" onclick="genToken()">Generar link</button>
@@ -1511,6 +1599,7 @@ function exportar() { window.location.href = '/api/exportar-excel'; }
 
 function abrirToken(id) {
   document.getElementById('torden').value = '';
+  document.getElementById('tenvio').checked = false;
   document.getElementById('tresult').style.display = 'none';
   document.getElementById('mtoken').classList.add('open');
 }
@@ -1523,7 +1612,8 @@ function genToken() {
   btn.textContent = 'Buscando orden...';
   document.getElementById('tresult').style.display = 'none';
   document.getElementById('terror').style.display = 'none';
-  fetch('/api/tokens?orden_nro=' + encodeURIComponent(orden), {method: 'POST'})
+  var pagaEnvio = document.getElementById('tenvio').checked ? 'true' : 'false';
+  fetch('/api/tokens?orden_nro=' + encodeURIComponent(orden) + '&cliente_paga_envio=' + pagaEnvio, {method: 'POST'})
     .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, status: r.status, data: d}; }); })
     .then(function(res){
       btn.disabled = false;
@@ -1776,6 +1866,8 @@ function cargar(){
           '<span><strong>ORDEN</strong>#' + esc(it.orden_nro||'-') + '</span>' +
           '<span><strong>CLIENTE</strong>' + esc(it.cliente_email||'-') + '</span>' +
           '<span><strong>CREADO</strong>' + esc(fmtFecha(it.creado_en)) + '</span>' +
+          '<span style="color:' + (it.cliente_paga_envio ? 'var(--warn)' : 'var(--ink-mute)') + '"><strong>ENVIO</strong>' + (it.cliente_paga_envio ? 'Paga cliente' : 'Lo cubrimos') + '</span>' +
+          (it.orden_envio_tn_number ? '<span style="color:var(--accent-2)"><strong>ENVIO TN</strong>#' + esc(it.orden_envio_tn_number) + '</span>' : '') +
           (it.motivo_rechazo ? '<span style="color:var(--err)"><strong>MOTIVO</strong>' + esc(it.motivo_rechazo) + '</span>' : '') +
         '</div>' +
       '</div>';

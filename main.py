@@ -1298,6 +1298,8 @@ header h1::before{content:"";width:8px;height:8px;background:var(--accent-2);dis
 .nav a.current{color:var(--ink);background:var(--surface-2);box-shadow:inset 0 -2px 0 var(--accent-2)}
 .nav .bdg{background:var(--warn);color:#fff;font-size:.6rem;padding:1px 6px;margin-left:.5rem;font-weight:700;border-radius:0}
 .actions{display:flex;align-items:center;padding-right:1rem;gap:.5rem}
+.tb-group{display:flex;gap:.25rem}
+.tb-sep{width:1px;height:22px;background:var(--line);margin:0 .35rem}
 .btn{font-family:var(--mono);padding:.5rem .9rem;border:1px solid var(--line-2);background:transparent;color:var(--ink);cursor:pointer;font-size:.7rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;border-radius:0;transition:all .12s}
 .btn:hover{border-color:var(--ink);background:var(--surface-2)}
 .btn-white{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -1364,10 +1366,14 @@ main{padding:0}
     <a href="/cambios-admin">Cambios <span class="bdg" id="badge-cambios">0</span></a>
   </nav>
   <div class="actions">
-    <button class="btn" onclick="document.getElementById('fi').click()">Import</button>
-    <button class="btn" onclick="exportar()">Export</button>
-    <button class="btn" onclick="actualizarImagenes()">Sync img</button>
-    <button class="btn btn-green" onclick="abrirModal()">+ Nueva</button>
+    <span class="tb-group">
+      <button class="btn" onclick="document.getElementById('fi').click()" title="Importar stock desde Excel">Importar</button>
+      <button class="btn" onclick="exportar()" title="Exportar stock a Excel">Exportar</button>
+      <button class="btn" onclick="actualizarImagenes()" title="Sincronizar imagenes desde Tienda Nube">Sync imagenes</button>
+    </span>
+    <span class="tb-sep"></span>
+    <button class="btn" onclick="abrirTokenGlobal()" title="Generar link de cambio para un cliente">Generar link de cambio</button>
+    <button class="btn btn-green" onclick="abrirModal()">+ Nueva remera</button>
     <input type="file" id="fi" accept=".xlsx" style="display:none" onchange="importar(this)">
   </div>
 </header>
@@ -1391,11 +1397,14 @@ main{padding:0}
       <div id="sg" style="border:1px solid #ddd;border-radius:6px;margin-top:4px;display:none;max-height:200px;overflow-y:auto;background:#fff"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Categoria</label>
+      <div class="field"><label>Categoría</label>
         <select id="fcat">
-          <option>Musica</option><option>Cine y Series</option>
-          <option>Superheroes</option><option>Videojuegos</option>
-          <option>Autos y Motos</option><option>Otros</option>
+          <option>Música</option>
+          <option>Cine y Series</option>
+          <option>Superhéroes</option>
+          <option>Videojuegos</option>
+          <option>Autos y Motos</option>
+          <option>Otros</option>
         </select>
       </div>
       <div class="field"><label>Talle</label>
@@ -1423,14 +1432,14 @@ main{padding:0}
 <div class="modal-bg" id="mtoken">
   <div class="modal">
     <h2>Generar link de cambio</h2>
-    <div class="field"><label>Numero de orden de Tienda Nube</label><input id="torden" placeholder="10042"></div>
-    <p style="font-size:.7rem;color:var(--ink-mute);margin-top:-.4rem;margin-bottom:.85rem;font-family:var(--mono);letter-spacing:.08em">// Buscamos la orden y sus productos en TN automaticamente</p>
+    <div class="field"><label>Número de orden de Tienda Nube</label><input id="torden" placeholder="10042"></div>
+    <p style="font-size:.7rem;color:var(--ink-mute);margin-top:-.4rem;margin-bottom:.85rem;font-family:var(--mono);letter-spacing:.08em">// Buscamos la orden y sus productos en TN automáticamente</p>
     <div class="field" style="background:var(--surface-2);padding:.85rem;border:1px solid var(--line)">
       <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;margin:0;color:var(--ink);text-transform:none;letter-spacing:0;font-family:var(--sans);font-size:.85rem;font-weight:500">
         <input type="checkbox" id="tenvio" style="width:auto;margin:0">
-        Cliente paga envio del cambio
+        Cliente paga envío del cambio
       </label>
-      <p style="font-size:.7rem;color:var(--ink-mute);margin-top:.4rem;margin-left:1.5rem">Si esta marcado, al aprobar el cambio se crea una orden en TN con "ENVIO CORREO ARGENTINO" para que el cliente abone.</p>
+      <p style="font-size:.7rem;color:var(--ink-mute);margin-top:.4rem;margin-left:1.5rem">Si está marcado, al aprobar el cambio se crea una orden en TN con "ENVIO CORREO ARGENTINO" para que el cliente abone.</p>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="document.getElementById('mtoken').classList.remove('open')">Cerrar</button>
@@ -1527,9 +1536,8 @@ function renderizar() {
     html += '</div>';
     html += '<p>' + esc(r.color || '\u2014') + '</p>';
     html += '<div class="card-actions">';
-    html += '<button onclick="editar(' + r.id + ')">Edit</button>';
-    html += '<button class="act-link" onclick="abrirToken(' + r.id + ')">Link</button>';
-    html += '<button class="act-del" onclick="eliminar(' + r.id + ')">Del</button>';
+    html += '<button onclick="editar(' + r.id + ')">Editar</button>';
+    html += '<button class="act-del" onclick="eliminar(' + r.id + ')">Eliminar</button>';
     html += '</div></div></div>';
   }
   grid.innerHTML = html;
@@ -1597,11 +1605,13 @@ function importar(input) {
 
 function exportar() { window.location.href = '/api/exportar-excel'; }
 
-function abrirToken(id) {
+function abrirTokenGlobal() {
   document.getElementById('torden').value = '';
   document.getElementById('tenvio').checked = false;
   document.getElementById('tresult').style.display = 'none';
+  document.getElementById('terror').style.display = 'none';
   document.getElementById('mtoken').classList.add('open');
+  setTimeout(function(){ document.getElementById('torden').focus(); }, 50);
 }
 
 function genToken() {

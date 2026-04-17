@@ -327,11 +327,24 @@ def validar_acceso(payload: ValidarAccesoPayload):
         raise HTTPException(status_code=409, detail="Cambio ya finalizado")
     if (t.get("cliente_email") or "").lower().strip() != payload.email.lower().strip():
         raise HTTPException(status_code=403, detail="Email no coincide con la orden")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, producto_original, remera_elegida_id, remera_elegida_nombre,
+                       remera_elegida_talle, remera_elegida_color, remera_elegida_imagen, estado
+                FROM cambios
+                WHERE token_id=%s
+                ORDER BY creado_en ASC;
+            """, (payload.token,))
+            cambios = cur.fetchall()
+
     return {
         "ok": True,
         "orden_nro": t["orden_nro"],
         "cliente_nombre": t.get("cliente_nombre") or "",
         "productos_originales": t.get("productos_originales") or [],
+        "selecciones_previas": cambios,
         "expira_at": t["expira_at"].isoformat()
     }
 
@@ -507,18 +520,18 @@ def historial_cambio(cambio_id: int):
 def pagina_cambio(token: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM tokens_cambio WHERE token_id=%s;", (token,))
+            cur.execute("SELECT token_id, expira_at, finalizado FROM tokens_cambio WHERE token_id=%s;", (token,))
             t = cur.fetchone()
     if not t:
-        return "<h2>Link invalido.</h2>"
-    if t["usado"]:
-        return "<h2>Este link ya fue utilizado.</h2>"
+        return HTMLResponse("<div style='font-family:system-ui;padding:3rem;text-align:center'><h2>Link invalido</h2><p style='color:#666;margin-top:.5rem'>El link que abriste no existe.</p></div>", status_code=404)
     if datetime.now() > t["expira_at"]:
-        return "<h2>Este link expiro.</h2>"
+        return HTMLResponse("<div style='font-family:system-ui;padding:3rem;text-align:center'><h2>Link expirado</h2><p style='color:#666;margin-top:.5rem'>Este link ya no esta disponible. Contactanos por WhatsApp si necesitas ayuda.</p></div>", status_code=410)
+    if t.get("finalizado"):
+        return HTMLResponse("<div style='font-family:system-ui;padding:3rem;text-align:center'><h2>Cambio confirmado</h2><p style='color:#666;margin-top:.5rem'>Ya finalizaste tu eleccion. Te vamos a escribir por WhatsApp para coordinar.</p></div>", status_code=200)
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM stock WHERE cantidad > 0 ORDER BY talle, nombre;")
+            cur.execute("SELECT id, nombre, talle, color, imagen_url FROM stock WHERE cantidad > 0 ORDER BY nombre, talle;")
             remeras = cur.fetchall()
 
     remeras_json = json.dumps([{
@@ -526,322 +539,112 @@ def pagina_cambio(token: str):
         "nombre": str(r["nombre"] or ""),
         "talle": str(r["talle"] or ""),
         "color": str(r["color"] or ""),
-        "imagen_url": str(r["imagen_url"] or ""),
-        "link_tienda": str(r["link_tienda"] or "")
+        "imagen_url": str(r["imagen_url"] or "")
     } for r in remeras])
-
-    orden_nro = t["orden_nro"]
-    token_id = t["token_id"]
 
     html = """<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Elegí tu cambio · Samcro</title>
+<title>Cambio de remera - Samcro</title>
 <style>
 :root{
-  --black:#0a0a0a;
-  --white:#fafafa;
-  --gray-50:#f4f4f4;
-  --gray-100:#e8e8e8;
-  --gray-400:#9a9a9a;
-  --gray-600:#555;
-  --green:#16a34a;
-  --green-light:#f0fdf4;
-  --radius:12px;
-  --radius-sm:8px;
+  --black:#0a0a0a; --white:#fafafa;
+  --gray-50:#f4f4f4; --gray-100:#e8e8e8; --gray-300:#c8c8c8;
+  --gray-400:#9a9a9a; --gray-600:#555;
+  --green:#16a34a; --green-light:#f0fdf4;
+  --red:#dc2626; --red-light:#fee2e2;
+  --radius:12px; --radius-sm:8px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html{scroll-behavior:smooth}
-body{
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
-  background:var(--gray-50);
-  color:var(--black);
-  min-height:100vh;
-  overscroll-behavior:none;
-}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--gray-50);color:var(--black);min-height:100vh}
+header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between}
+.brand{font-size:.7rem;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+.brand-meta{font-size:.7rem;color:var(--gray-400)}
+.screen{display:none;padding:1.25rem 1rem 3rem;max-width:600px;margin:0 auto}
+.screen.active{display:block}
 
-/* ── HEADER ─────────────────────────────────────── */
-header{
-  background:var(--black);
-  color:var(--white);
-  padding:1rem 1.25rem .9rem;
-  position:sticky;
-  top:0;
-  z-index:10;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-}
-.header-brand{
-  font-size:.7rem;
-  font-weight:800;
-  letter-spacing:.18em;
-  text-transform:uppercase;
-  color:var(--white);
-}
-.header-orden{
-  font-size:.7rem;
-  color:var(--gray-400);
-  letter-spacing:.04em;
-}
+/* LOGIN */
+.login-wrap{padding-top:2rem}
+.login-title{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:.5rem;line-height:1.2}
+.login-sub{font-size:.9rem;color:var(--gray-600);line-height:1.5;margin-bottom:1.75rem}
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:.75rem;font-weight:600;color:var(--gray-600);margin-bottom:.4rem;letter-spacing:.02em}
+.field input{width:100%;padding:.85rem 1rem;border:1.5px solid var(--gray-100);border-radius:var(--radius-sm);font-size:1rem;background:var(--white);transition:border-color .15s}
+.field input:focus{outline:none;border-color:var(--black)}
+.btn-primary{width:100%;padding:1rem;border-radius:var(--radius-sm);background:var(--black);color:var(--white);border:none;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .15s}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-secondary{width:100%;padding:.85rem;border-radius:var(--radius-sm);background:var(--white);color:var(--black);border:1.5px solid var(--gray-100);font-size:.9rem;font-weight:600;cursor:pointer;margin-top:.5rem}
+.btn-confirm{background:var(--green)}
+.error-msg{background:var(--red-light);color:#991b1b;border-radius:var(--radius-sm);padding:.75rem 1rem;font-size:.85rem;margin-bottom:1rem;display:none}
+.error-msg.show{display:block}
 
-/* ── SLIDE CONTAINER ─────────────────────────────── */
-.slide-container{
-  overflow:hidden;
-  position:relative;
-}
-.slide-track{
-  display:flex;
-  transition:transform .35s cubic-bezier(.4,0,.2,1);
-  will-change:transform;
-}
-.vista{
-  min-width:100vw;
-  padding:1.25rem 1rem 3rem;
-}
+/* SELECCION */
+.cliente-greeting{font-size:.75rem;color:var(--gray-600);margin-bottom:.25rem;letter-spacing:.02em}
+.cliente-name{font-size:1.35rem;font-weight:800;letter-spacing:-.02em;line-height:1.2;margin-bottom:.25rem}
+.intro{font-size:.85rem;color:var(--gray-600);margin-bottom:1.5rem;line-height:1.5}
+.original-card{background:var(--white);border-radius:var(--radius);padding:.85rem;margin-bottom:.85rem;display:flex;gap:.85rem;align-items:flex-start;border:1.5px solid var(--gray-100)}
+.original-img{width:72px;height:72px;border-radius:var(--radius-sm);object-fit:cover;background:var(--gray-50);flex-shrink:0}
+.original-img-ph{width:72px;height:72px;border-radius:var(--radius-sm);background:var(--gray-100);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--gray-400)}
+.original-info{flex:1;min-width:0}
+.original-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gray-400);margin-bottom:.25rem}
+.original-name{font-size:.9rem;font-weight:700;line-height:1.25;margin-bottom:.2rem}
+.original-meta{font-size:.75rem;color:var(--gray-600)}
+.swap-arrow{text-align:center;color:var(--gray-300);font-size:1.1rem;margin:-.25rem 0;letter-spacing:.4em}
+.replacement-card{background:var(--white);border-radius:var(--radius);padding:.85rem;margin-bottom:1.5rem;border:1.5px solid var(--gray-100);transition:border-color .15s}
+.replacement-card.empty{border-style:dashed;background:transparent;cursor:pointer;text-align:center;padding:1.5rem 1rem}
+.replacement-card.empty:hover{border-color:var(--black);background:var(--white)}
+.replacement-empty-icon{font-size:1.5rem;margin-bottom:.4rem;color:var(--gray-400)}
+.replacement-empty-text{font-size:.85rem;font-weight:600;color:var(--gray-600)}
+.replacement-empty-hint{font-size:.75rem;color:var(--gray-400);margin-top:.2rem}
+.replacement-content{display:flex;gap:.85rem;align-items:flex-start}
+.rep-img{width:72px;height:72px;border-radius:var(--radius-sm);object-fit:cover;background:var(--gray-50);flex-shrink:0}
+.rep-info{flex:1;min-width:0}
+.rep-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--green);margin-bottom:.25rem}
+.rep-name{font-size:.9rem;font-weight:700;line-height:1.25;margin-bottom:.2rem}
+.rep-meta{font-size:.75rem;color:var(--gray-600)}
+.rep-change{background:none;border:none;color:var(--gray-600);font-size:.75rem;cursor:pointer;padding:.25rem 0;text-decoration:underline;margin-top:.4rem}
 
-/* ── FILTROS ─────────────────────────────────────── */
-.catalog-header{
-  display:flex;
-  align-items:baseline;
-  justify-content:space-between;
-  margin-bottom:1rem;
-}
-.catalog-title{
-  font-size:1.25rem;
-  font-weight:800;
-  letter-spacing:-.02em;
-  line-height:1.1;
-}
-.guia-link{
-  font-size:.75rem;
-  color:var(--gray-600);
-  background:none;
-  border:none;
-  cursor:pointer;
-  padding:0;
-  text-decoration:underline;
-  text-underline-offset:3px;
-  white-space:nowrap;
-}
-.chips-wrap{
-  display:flex;
-  gap:.35rem;
-  overflow-x:auto;
-  padding-bottom:.5rem;
-  margin-bottom:1.1rem;
-  scrollbar-width:none;
-}
+.bottom-actions{position:sticky;bottom:0;background:linear-gradient(to top,var(--gray-50) 80%,transparent);padding:1rem 0 .25rem;margin-top:1rem}
+.bottom-actions .btn-primary{margin-bottom:.5rem}
+.guia-link{font-size:.8rem;color:var(--gray-600);background:none;border:none;cursor:pointer;text-decoration:underline;text-underline-offset:3px;display:block;margin:1rem auto 0}
+
+/* PICKER FULLSCREEN */
+.picker{display:none;position:fixed;inset:0;background:var(--gray-50);z-index:100;flex-direction:column}
+.picker.open{display:flex}
+.picker-head{background:var(--black);color:var(--white);padding:1rem 1.25rem;display:flex;align-items:center;gap:.85rem;flex-shrink:0}
+.picker-close{background:none;border:none;color:var(--white);font-size:1.4rem;cursor:pointer;padding:0;line-height:1}
+.picker-title{font-size:.9rem;font-weight:700;flex:1}
+.picker-body{flex:1;overflow-y:auto;padding:1rem;max-width:600px;width:100%;margin:0 auto}
+.chips-wrap{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:1rem;scrollbar-width:none}
 .chips-wrap::-webkit-scrollbar{display:none}
-.chip{
-  border:1.5px solid var(--gray-100);
-  border-radius:20px;
-  padding:.3rem .9rem;
-  font-size:.78rem;
-  font-weight:600;
-  background:var(--white);
-  color:var(--gray-600);
-  cursor:pointer;
-  white-space:nowrap;
-  transition:all .15s;
-  flex-shrink:0;
-}
-.chip.sel{
-  border-color:var(--black);
-  background:var(--black);
-  color:var(--white);
-}
-
-/* ── PRODUCT GRID ────────────────────────────────── */
-.grid-remeras{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:.65rem;
-}
-@media(min-width:480px){.grid-remeras{grid-template-columns:repeat(3,1fr)}}
-@media(min-width:700px){.grid-remeras{grid-template-columns:repeat(4,1fr)}}
-
-.card{
-  background:var(--white);
-  border-radius:var(--radius);
-  overflow:hidden;
-  cursor:pointer;
-  border:2px solid transparent;
-  transition:border-color .15s,transform .15s,box-shadow .15s;
-  position:relative;
-}
+.chip{border:1.5px solid var(--gray-100);border-radius:20px;padding:.3rem .9rem;font-size:.78rem;font-weight:600;background:var(--white);color:var(--gray-600);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
+.chip.sel{border-color:var(--black);background:var(--black);color:var(--white)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.65rem}
+@media(min-width:480px){.grid{grid-template-columns:repeat(3,1fr)}}
+.card{background:var(--white);border-radius:var(--radius);overflow:hidden;cursor:pointer;border:2px solid transparent;transition:all .15s}
 .card:active{transform:scale(.97)}
-.card-img{
-  width:100%;
-  aspect-ratio:1/1;
-  object-fit:contain;
-  background:var(--gray-50);
-  padding:.5rem;
-  display:block;
-}
-.card-img-placeholder{
-  width:100%;
-  aspect-ratio:1/1;
-  background:var(--gray-100);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:var(--gray-400);
-  font-size:.7rem;
-}
-.card-body{
-  padding:.55rem .65rem .65rem;
-}
-.card-name{
-  font-size:.78rem;
-  font-weight:700;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  margin-bottom:.15rem;
-}
-.card-meta{
-  font-size:.7rem;
-  color:var(--gray-400);
-}
-.card-talle-badge{
-  display:inline-block;
-  background:var(--gray-50);
-  border:1px solid var(--gray-100);
-  border-radius:4px;
-  font-size:.65rem;
-  font-weight:700;
-  padding:.1rem .35rem;
-  margin-top:.3rem;
-  letter-spacing:.03em;
-}
-.sin-stock{
-  grid-column:1/-1;
-  text-align:center;
-  padding:3rem 1rem;
-  color:var(--gray-400);
-  font-size:.85rem;
-}
+.card-img{width:100%;aspect-ratio:1/1;object-fit:contain;background:var(--gray-50);padding:.5rem;display:block}
+.card-img-ph{width:100%;aspect-ratio:1/1;background:var(--gray-100);display:flex;align-items:center;justify-content:center;color:var(--gray-400);font-size:.7rem}
+.card-body{padding:.5rem .65rem .65rem}
+.card-name{font-size:.78rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:.15rem}
+.card-meta{font-size:.7rem;color:var(--gray-400)}
+.card-badge{display:inline-block;background:var(--gray-50);border:1px solid var(--gray-100);border-radius:4px;font-size:.65rem;font-weight:700;padding:.1rem .35rem;margin-top:.3rem;letter-spacing:.03em}
+.empty-state{text-align:center;color:var(--gray-400);padding:3rem 1rem;font-size:.85rem}
 
-/* ── CONFIRM VIEW ────────────────────────────────── */
-.back-btn{
-  display:inline-flex;
-  align-items:center;
-  gap:.35rem;
-  background:none;
-  border:none;
-  color:var(--gray-600);
-  font-size:.8rem;
-  cursor:pointer;
-  padding:.25rem 0;
-  margin-bottom:1.25rem;
-}
-.back-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.conf-img-wrap{
-  background:var(--white);
-  border-radius:var(--radius);
-  padding:1rem;
-  margin-bottom:1rem;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  min-height:200px;
-}
-.conf-img{
-  max-height:220px;
-  max-width:100%;
-  object-fit:contain;
-}
-.conf-section-title{
-  font-size:.65rem;
-  font-weight:700;
-  letter-spacing:.1em;
-  text-transform:uppercase;
-  color:var(--gray-400);
-  margin-bottom:.6rem;
-}
-.conf-row{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:.7rem 0;
-  border-bottom:1px solid var(--gray-100);
-}
-.conf-row:last-of-type{border-bottom:none}
-.conf-row-label{font-size:.8rem;color:var(--gray-600)}
-.conf-row-value{font-size:.85rem;font-weight:700}
-.conf-card{
-  background:var(--white);
-  border-radius:var(--radius);
-  padding:.25rem 1rem;
-  margin-bottom:1.25rem;
-}
-.btn-confirm{
-  width:100%;
-  padding:1rem;
-  border-radius:var(--radius-sm);
-  background:var(--green);
-  color:var(--white);
-  border:none;
-  font-size:.95rem;
-  font-weight:700;
-  letter-spacing:.01em;
-  cursor:pointer;
-  transition:opacity .15s;
-}
-.btn-confirm:disabled{opacity:.5;cursor:not-allowed}
+/* SUCCESS */
+.success-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:2rem 1rem}
+.success-ring{width:72px;height:72px;border-radius:50%;background:var(--green-light);border:2px solid #bbf7d0;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;color:var(--green);font-size:1.8rem;font-weight:800}
+.success-title{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:.6rem}
+.success-body{font-size:.9rem;color:var(--gray-600);line-height:1.7;max-width:320px}
 
-/* ── SUCCESS VIEW ────────────────────────────────── */
-.success-wrap{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  min-height:60vh;
-  text-align:center;
-  padding:2rem 1rem;
-}
-.success-ring{
-  width:72px;height:72px;border-radius:50%;
-  background:var(--green-light);
-  border:2px solid #bbf7d0;
-  display:flex;align-items:center;justify-content:center;
-  margin:0 auto 1.5rem;
-}
-.success-ring svg{width:32px;height:32px;stroke:var(--green);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.success-title{font-size:1.25rem;font-weight:800;letter-spacing:-.02em;margin-bottom:.6rem}
-.success-body{font-size:.85rem;color:var(--gray-600);line-height:1.7;max-width:280px}
-
-/* ── MODAL (bottom sheet) ────────────────────────── */
-.modal-overlay{
-  display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.55);
-  z-index:200;
-  align-items:flex-end;justify-content:center;
-}
+/* MODAL guia talles */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:flex-end;justify-content:center}
 .modal-overlay.open{display:flex}
-.modal-sheet{
-  background:var(--white);
-  border-radius:20px 20px 0 0;
-  width:100%;max-width:560px;
-  max-height:90vh;
-  overflow:hidden;
-  display:flex;flex-direction:column;
-}
-.modal-handle{
-  width:36px;height:4px;border-radius:2px;
-  background:var(--gray-100);
-  margin:.7rem auto .3rem;
-  flex-shrink:0;
-}
-.modal-head{
-  padding:.5rem 1rem .75rem;
-  display:flex;justify-content:space-between;align-items:center;
-  border-bottom:1px solid var(--gray-100);
-  flex-shrink:0;
-}
+.modal-sheet{background:var(--white);border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column}
+.modal-handle{width:36px;height:4px;border-radius:2px;background:var(--gray-100);margin:.7rem auto .3rem;flex-shrink:0}
+.modal-head{padding:.5rem 1rem .75rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--gray-100);flex-shrink:0}
 .modal-head h3{font-size:.9rem;font-weight:700}
 .modal-close{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--gray-600);padding:.2rem}
 .modal-sheet iframe{flex:1;border:none;min-height:75vh}
@@ -850,142 +653,287 @@ header{
 <body>
 
 <header>
-  <span class="header-brand">Samcro Remeras</span>
-  <span class="header-orden">Orden #""" + str(orden_nro) + """</span>
+  <span class="brand">Samcro Remeras</span>
+  <span class="brand-meta" id="header-orden"></span>
 </header>
 
-<div class="slide-container">
-<div class="slide-track" id="track">
-
-  <!-- Vista 0: catálogo -->
-  <div class="vista" id="v0">
-    <div class="catalog-header">
-      <h1 class="catalog-title">Elegí tu<br>nueva remera</h1>
-      <button class="guia-link" onclick="abrirGuia()">Ver guía de talles</button>
+<!-- LOGIN -->
+<div class="screen active" id="screen-login">
+  <div class="login-wrap">
+    <h1 class="login-title">Bienvenido al portal de cambios</h1>
+    <p class="login-sub">Ingresa el email con el que hiciste tu compra para ver tu orden y elegir el cambio.</p>
+    <div class="error-msg" id="login-error"></div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="email-input" placeholder="tucorreo@ejemplo.com" autocomplete="email" inputmode="email">
     </div>
-    <div class="chips-wrap" id="chips"></div>
-    <div class="grid-remeras" id="grid-remeras"></div>
+    <button class="btn-primary" id="login-btn" onclick="login()">Continuar</button>
   </div>
+</div>
 
-  <!-- Vista 1: confirmación -->
-  <div class="vista" id="v1">
-    <button class="back-btn" onclick="irVista(0)">
-      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-      Cambiar elección
-    </button>
-    <div class="conf-img-wrap">
-      <img id="conf-img" class="conf-img" src="" alt="" onerror="this.parentNode.style.display='none'">
-    </div>
-    <p class="conf-section-title">Tu elección</p>
-    <div class="conf-card">
-      <div class="conf-row">
-        <span class="conf-row-label">Remera</span>
-        <span class="conf-row-value" id="conf-nombre"></span>
-      </div>
-      <div class="conf-row">
-        <span class="conf-row-label">Talle</span>
-        <span class="conf-row-value" id="conf-talle"></span>
-      </div>
-      <div class="conf-row">
-        <span class="conf-row-label">Color</span>
-        <span class="conf-row-value" id="conf-color"></span>
-      </div>
-    </div>
-    <button class="btn-confirm" id="btn-confirmar" onclick="confirmar()">Confirmar cambio</button>
+<!-- SELECCION -->
+<div class="screen" id="screen-seleccion">
+  <p class="cliente-greeting">Hola</p>
+  <h1 class="cliente-name" id="cliente-name"></h1>
+  <p class="intro">Para cada remera de tu orden, elegi cual queres recibir a cambio.</p>
+  <div id="originales-wrap"></div>
+  <div class="bottom-actions">
+    <button class="btn-primary btn-confirm" id="finalizar-btn" onclick="finalizar()" disabled>Confirmar mis elecciones</button>
+    <button class="btn-secondary" onclick="guardarYSalir()">Guardar y volver luego</button>
+    <button class="guia-link" onclick="abrirGuia()">Ver guia de talles</button>
   </div>
+</div>
 
-  <!-- Vista 2: éxito -->
-  <div class="vista" id="v2">
-    <div class="success-wrap">
-      <div class="success-ring">
-        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <h2 class="success-title">¡Listo!</h2>
-      <p class="success-body">Recibimos tu elección. Te escribimos por WhatsApp para coordinar el envío.</p>
-    </div>
+<!-- PICKER FULLSCREEN -->
+<div class="picker" id="picker">
+  <div class="picker-head">
+    <button class="picker-close" onclick="cerrarPicker()">&#10005;</button>
+    <span class="picker-title">Elegi la remera nueva</span>
+    <button class="guia-link" style="color:#fff;margin:0;font-size:.75rem" onclick="abrirGuia()">Talles</button>
   </div>
+  <div class="picker-body">
+    <div class="chips-wrap" id="picker-chips"></div>
+    <div class="grid" id="picker-grid"></div>
+  </div>
+</div>
 
-</div><!-- /track -->
-</div><!-- /slide-container -->
+<!-- SUCCESS -->
+<div class="screen" id="screen-success">
+  <div class="success-wrap">
+    <div class="success-ring">&#10003;</div>
+    <h2 class="success-title">Recibimos tu eleccion</h2>
+    <p class="success-body">Te vamos a escribir por WhatsApp cuando recibamos tu prenda original para coordinar el envio del cambio.</p>
+  </div>
+</div>
 
-<!-- Modal guía de talles -->
+<!-- MODAL GUIA -->
 <div class="modal-overlay" id="modal-guia" onclick="cerrarGuia()">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
     <div class="modal-head">
-      <h3>Guía de talles</h3>
+      <h3>Guia de talles</h3>
       <button class="modal-close" onclick="cerrarGuia()">&#10005;</button>
     </div>
-    <iframe src="https://www.samcroremeras.com.ar/guia-de-talles/" title="Guía de talles"></iframe>
+    <iframe src="https://www.samcroremeras.com.ar/guia-de-talles/" title="Guia de talles"></iframe>
   </div>
 </div>
 
 <script>
-var remeras = """ + remeras_json + """;
-var remeraSel = null;
+var TOKEN = '""" + str(token) + """';
+var STOCK = """ + remeras_json + """;
+var EMAIL = '';
+var NOMBRE = '';
+var ORDEN_NRO = '';
+var PRODUCTOS_ORIGINALES = [];
+var SELECCIONES = {};
+var pickerIndex = -1;
 var talleFiltro = '';
-var TOKEN = '""" + str(token_id) + """';
-var vistaActual = 0;
 
-function irVista(n) {
-  vistaActual = n;
-  var track = document.getElementById('track');
-  track.style.transform = 'translateX(-' + (n * 100) + 'vw)';
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
   window.scrollTo(0,0);
-  window.history.pushState({vista: n}, '', '#v' + n);
 }
 
 function abrirGuia(){ document.getElementById('modal-guia').classList.add('open'); }
 function cerrarGuia(){ document.getElementById('modal-guia').classList.remove('open'); }
 
-window.addEventListener('popstate', function(e) {
-  if (e.state && e.state.vista !== undefined) {
-    vistaActual = e.state.vista;
-    var track = document.getElementById('track');
-    track.style.transform = 'translateX(-' + (e.state.vista * 100) + 'vw)';
-    window.scrollTo(0,0);
+function login() {
+  var email = document.getElementById('email-input').value.trim().toLowerCase();
+  var err = document.getElementById('login-error');
+  var btn = document.getElementById('login-btn');
+  err.classList.remove('show');
+  if (!email || email.indexOf('@') < 0) {
+    err.textContent = 'Ingresa un email valido';
+    err.classList.add('show');
+    return;
   }
-});
+  btn.disabled = true;
+  btn.textContent = 'Validando...';
+  fetch('/api/validar-acceso', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: TOKEN, email: email})
+  }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, status: r.status, data: d}; }); })
+    .then(function(res){
+      btn.disabled = false;
+      btn.textContent = 'Continuar';
+      if (!res.ok) {
+        err.textContent = res.data.detail || 'Error al validar';
+        err.classList.add('show');
+        return;
+      }
+      EMAIL = email;
+      NOMBRE = res.data.cliente_nombre || '';
+      ORDEN_NRO = res.data.orden_nro || '';
+      PRODUCTOS_ORIGINALES = res.data.productos_originales || [];
+      var prevs = res.data.selecciones_previas || [];
+      prevs.forEach(function(c){
+        var po = c.producto_original || {};
+        for (var i = 0; i < PRODUCTOS_ORIGINALES.length; i++) {
+          var o = PRODUCTOS_ORIGINALES[i];
+          if (o.id === po.id || (o.nombre === po.nombre && o.talle === po.talle)) {
+            SELECCIONES[i] = {
+              id: c.remera_elegida_id,
+              nombre: c.remera_elegida_nombre,
+              talle: c.remera_elegida_talle,
+              color: c.remera_elegida_color,
+              imagen_url: c.remera_elegida_imagen
+            };
+            break;
+          }
+        }
+      });
+      try { localStorage.setItem('samcro_email_' + TOKEN, email); } catch(e){}
+      mostrarSeleccion();
+    })
+    .catch(function(){
+      btn.disabled = false;
+      btn.textContent = 'Continuar';
+      err.textContent = 'Error de conexion';
+      err.classList.add('show');
+    });
+}
 
-window.onload = function() {
-  window.history.pushState({vista: 0}, '', '#v0');
+function mostrarSeleccion() {
+  document.getElementById('header-orden').textContent = 'Orden #' + ORDEN_NRO;
+  document.getElementById('cliente-name').textContent = NOMBRE || '!Hola!';
+  renderOriginales();
+  showScreen('screen-seleccion');
+}
+
+function renderOriginales() {
+  var wrap = document.getElementById('originales-wrap');
+  wrap.innerHTML = '';
+  PRODUCTOS_ORIGINALES.forEach(function(p, i) {
+    var orig = document.createElement('div');
+    orig.className = 'original-card';
+    if (p.imagen) {
+      var im = document.createElement('img');
+      im.className = 'original-img';
+      im.src = p.imagen;
+      im.alt = p.nombre || '';
+      im.onerror = function(){
+        var ph = document.createElement('div');
+        ph.className = 'original-img-ph';
+        ph.textContent = 'sin foto';
+        im.replaceWith(ph);
+      };
+      orig.appendChild(im);
+    } else {
+      var ph = document.createElement('div');
+      ph.className = 'original-img-ph';
+      ph.textContent = 'sin foto';
+      orig.appendChild(ph);
+    }
+    var info = document.createElement('div');
+    info.className = 'original-info';
+    info.innerHTML =
+      '<div class="original-label">Devolves</div>' +
+      '<div class="original-name"></div>' +
+      '<div class="original-meta"></div>';
+    info.querySelector('.original-name').textContent = p.nombre || '(sin nombre)';
+    info.querySelector('.original-meta').textContent = (p.talle ? 'Talle ' + p.talle : '') + (p.cantidad > 1 ? ' \u00b7 x' + p.cantidad : '');
+    orig.appendChild(info);
+    wrap.appendChild(orig);
+
+    var arrow = document.createElement('div');
+    arrow.className = 'swap-arrow';
+    arrow.textContent = '\u2193';
+    wrap.appendChild(arrow);
+
+    var sel = SELECCIONES[i];
+    var rep = document.createElement('div');
+    if (sel) {
+      rep.className = 'replacement-card';
+      var content = document.createElement('div');
+      content.className = 'replacement-content';
+      if (sel.imagen_url) {
+        var rim = document.createElement('img');
+        rim.className = 'rep-img';
+        rim.src = sel.imagen_url;
+        rim.alt = sel.nombre || '';
+        rim.onerror = function(){
+          var ph = document.createElement('div');
+          ph.className = 'original-img-ph';
+          ph.textContent = 'sin foto';
+          rim.replaceWith(ph);
+        };
+        content.appendChild(rim);
+      } else {
+        var ph = document.createElement('div');
+        ph.className = 'original-img-ph';
+        ph.textContent = 'sin foto';
+        content.appendChild(ph);
+      }
+      var ri = document.createElement('div');
+      ri.className = 'rep-info';
+      ri.innerHTML =
+        '<div class="rep-label">Recibis</div>' +
+        '<div class="rep-name"></div>' +
+        '<div class="rep-meta"></div>' +
+        '<button class="rep-change">Cambiar eleccion</button>';
+      ri.querySelector('.rep-name').textContent = sel.nombre || '';
+      ri.querySelector('.rep-meta').textContent = 'Talle ' + (sel.talle || '-') + (sel.color ? ' \u00b7 ' + sel.color : '');
+      ri.querySelector('.rep-change').onclick = function(){ abrirPicker(i); };
+      content.appendChild(ri);
+      rep.appendChild(content);
+    } else {
+      rep.className = 'replacement-card empty';
+      rep.onclick = function(){ abrirPicker(i); };
+      rep.innerHTML =
+        '<div class="replacement-empty-icon">+</div>' +
+        '<div class="replacement-empty-text">Elegi tu remera nueva</div>' +
+        '<div class="replacement-empty-hint">Ver opciones disponibles</div>';
+    }
+    wrap.appendChild(rep);
+  });
+  actualizarBotonFinalizar();
+}
+
+function actualizarBotonFinalizar() {
+  var todas = PRODUCTOS_ORIGINALES.length > 0 && PRODUCTOS_ORIGINALES.every(function(_, i){ return SELECCIONES[i]; });
+  document.getElementById('finalizar-btn').disabled = !todas;
+}
+
+function abrirPicker(index) {
+  pickerIndex = index;
+  talleFiltro = '';
   var ts = {};
-  remeras.forEach(function(r){ ts[r.talle] = true; });
+  STOCK.forEach(function(r){ if (r.talle) ts[r.talle] = true; });
   var talles = Object.keys(ts).sort();
-  var wrap = document.getElementById('chips');
-
+  var chips = document.getElementById('picker-chips');
+  chips.innerHTML = '';
   function addChip(label, valor) {
     var b = document.createElement('button');
     b.className = 'chip' + (valor === talleFiltro ? ' sel' : '');
     b.textContent = label;
     b.onclick = function(){
       talleFiltro = valor;
-      document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('sel'); });
+      document.querySelectorAll('#picker-chips .chip').forEach(function(c){ c.classList.remove('sel'); });
       b.classList.add('sel');
-      renderGrid();
+      renderPickerGrid();
     };
-    wrap.appendChild(b);
+    chips.appendChild(b);
   }
-
   addChip('Todos', '');
   talles.forEach(function(t){ addChip(t, t); });
-  renderGrid();
-};
+  renderPickerGrid();
+  document.getElementById('picker').classList.add('open');
+}
 
-function renderGrid() {
-  var filtradas = talleFiltro
-    ? remeras.filter(function(r){ return r.talle === talleFiltro; })
-    : remeras;
-  var g = document.getElementById('grid-remeras');
+function renderPickerGrid() {
+  var filtradas = talleFiltro ? STOCK.filter(function(r){ return r.talle === talleFiltro; }) : STOCK;
+  var g = document.getElementById('picker-grid');
+  g.innerHTML = '';
   if (!filtradas.length) {
-    g.innerHTML = '<p class="sin-stock">No hay remeras disponibles en este talle.</p>';
+    g.innerHTML = '<p class="empty-state" style="grid-column:1/-1">No hay remeras disponibles</p>';
     return;
   }
-  g.innerHTML = '';
-  filtradas.forEach(function(r) {
+  filtradas.forEach(function(r){
     var card = document.createElement('div');
     card.className = 'card';
-    card.onclick = function(){ selRemera(r.id); };
+    card.onclick = function(){ elegirRemera(r); };
     if (r.imagen_url) {
       var im = document.createElement('img');
       im.className = 'card-img';
@@ -993,102 +941,110 @@ function renderGrid() {
       im.alt = r.nombre || '';
       im.onerror = function(){
         var ph = document.createElement('div');
-        ph.className = 'card-img-placeholder';
-        ph.textContent = 'sin imagen';
+        ph.className = 'card-img-ph';
+        ph.textContent = 'sin foto';
         im.replaceWith(ph);
       };
       card.appendChild(im);
     } else {
       var ph = document.createElement('div');
-      ph.className = 'card-img-placeholder';
-      ph.textContent = 'sin imagen';
+      ph.className = 'card-img-ph';
+      ph.textContent = 'sin foto';
       card.appendChild(ph);
     }
     var body = document.createElement('div');
     body.className = 'card-body';
-    var name = document.createElement('div');
-    name.className = 'card-name';
-    name.textContent = r.nombre || '';
-    var meta = document.createElement('div');
-    meta.className = 'card-meta';
-    meta.textContent = r.color || '';
-    var badge = document.createElement('span');
-    badge.className = 'card-talle-badge';
-    badge.textContent = r.talle || '';
-    body.appendChild(name);
-    body.appendChild(meta);
-    body.appendChild(badge);
+    var n = document.createElement('div'); n.className = 'card-name'; n.textContent = r.nombre || '';
+    var m = document.createElement('div'); m.className = 'card-meta'; m.textContent = r.color || '';
+    var b = document.createElement('span'); b.className = 'card-badge'; b.textContent = r.talle || '';
+    body.appendChild(n); body.appendChild(m); body.appendChild(b);
     card.appendChild(body);
     g.appendChild(card);
   });
 }
 
-function selRemera(id) {
-  remeraSel = remeras.find(function(r){ return r.id === id; });
-  document.getElementById('conf-nombre').textContent = remeraSel.nombre;
-  document.getElementById('conf-talle').textContent = remeraSel.talle;
-  document.getElementById('conf-color').textContent = remeraSel.color || '—';
-  var img = document.getElementById('conf-img');
-  var wrap = img.parentNode;
-  if (remeraSel.imagen_url) {
-    img.src = remeraSel.imagen_url;
-    wrap.style.display = 'flex';
-  } else {
-    wrap.style.display = 'none';
+function elegirRemera(r) {
+  if (pickerIndex >= 0) {
+    SELECCIONES[pickerIndex] = r;
+    cerrarPicker();
+    renderOriginales();
   }
-  var btn = document.getElementById('btn-confirmar');
-  btn.disabled = false;
-  btn.textContent = 'Confirmar cambio';
-  irVista(1);
 }
 
-function confirmar() {
-  if (!remeraSel) return;
-  var btn = document.getElementById('btn-confirmar');
-  btn.disabled = true;
-  btn.textContent = 'Confirmando...';
-  fetch('/api/confirmar-cambio', {
+function cerrarPicker() {
+  document.getElementById('picker').classList.remove('open');
+  pickerIndex = -1;
+}
+
+function _payloadSelecciones() {
+  var arr = [];
+  Object.keys(SELECCIONES).forEach(function(k){
+    arr.push({ producto_original_index: parseInt(k), remera_id: SELECCIONES[k].id });
+  });
+  return arr;
+}
+
+function guardarYSalir() {
+  var sel = _payloadSelecciones();
+  if (!sel.length) {
+    alert('Todavia no elegiste ninguna remera');
+    return;
+  }
+  fetch('/api/cambios/seleccionar', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({token: TOKEN, remera_id: remeraSel.id})
+    body: JSON.stringify({token: TOKEN, email: EMAIL, selecciones: sel, finalizar: false})
   }).then(function(r){ return r.json(); })
-    .then(function(data){
-      if (data.ok) { irVista(2); }
+    .then(function(){ alert('Guardamos tu progreso. Podes volver al link cuando quieras.'); });
+}
+
+function finalizar() {
+  var sel = _payloadSelecciones();
+  if (sel.length !== PRODUCTOS_ORIGINALES.length) {
+    alert('Te falta elegir alguna remera');
+    return;
+  }
+  if (!confirm('Una vez confirmado no vas a poder cambiar tu eleccion. Continuar?')) return;
+  var btn = document.getElementById('finalizar-btn');
+  btn.disabled = true;
+  btn.textContent = 'Confirmando...';
+  fetch('/api/cambios/seleccionar', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: TOKEN, email: EMAIL, selecciones: sel, finalizar: true})
+  }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+    .then(function(res){
+      if (res.ok) { showScreen('screen-success'); }
       else {
         btn.disabled = false;
-        btn.textContent = 'Confirmar cambio';
-        alert('Hubo un error, intentá de nuevo.');
+        btn.textContent = 'Confirmar mis elecciones';
+        alert('Error: ' + (res.data.detail || 'no se pudo finalizar'));
       }
     })
     .catch(function(){
       btn.disabled = false;
-      btn.textContent = 'Confirmar cambio';
-      alert('Error de conexión, intentá de nuevo.');
+      btn.textContent = 'Confirmar mis elecciones';
+      alert('Error de conexion');
     });
 }
+
+window.addEventListener('keydown', function(e){
+  if (e.key === 'Enter' && document.getElementById('screen-login').classList.contains('active')) {
+    login();
+  }
+});
+
+(function autoLogin() {
+  try {
+    var saved = localStorage.getItem('samcro_email_' + TOKEN);
+    if (saved) document.getElementById('email-input').value = saved;
+  } catch(e){}
+})();
 </script>
 </body>
 </html>"""
     return html
-@app.post("/api/confirmar-cambio")
-def confirmar_cambio(data: dict):
-    token = data.get("token")
-    remera_id = data.get("remera_id")
-    if not token or not remera_id:
-        return {"ok": False, "error": "datos incompletos"}
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM tokens_cambio WHERE token_id=%s;", (token,))
-            t = cur.fetchone()
-            if not t or t["usado"] or datetime.now() > t["expira_at"]:
-                return {"ok": False, "error": "token invalido"}
-            cur.execute(
-                "UPDATE tokens_cambio SET usado=TRUE, remera_elegida_id=%s WHERE token_id=%s;",
-                (remera_id, token)
-            )
-            cur.execute("UPDATE stock SET cantidad = cantidad - 1 WHERE id=%s AND cantidad > 0;", (remera_id,))
-            conn.commit()
-    return {"ok": True}    
+
 
 @app.get("/api/buscar-productos")
 def buscar_productos(q: str = ""):

@@ -1400,10 +1400,12 @@ def sincronizar_tn():
         chain.reverse()  # root -> leaf
         if not chain:
             return ""
-        # Si hay wrapper top-level (REMERAS, PERSONALIZADAS, LISAS), devolver el hijo directo
+        # Solo interesa el subarbol REMERAS. Ignorar PERSONALIZADAS / LISAS / otros.
+        if chain[0].strip().upper() != "REMERAS":
+            return ""
         if len(chain) >= 2:
             return chain[1]
-        return chain[0]
+        return ""
 
     # 2) productos -> map por nombre normalizado
     productos = _tn_fetch_all("products")
@@ -1452,7 +1454,8 @@ def sincronizar_tn():
                     continue
                 nueva_img = m["imagen"] if m["imagen"] and not r["imagen_url"] else r["imagen_url"]
                 nueva_link = m["link"] if m["link"] and not r["link_tienda"] else r["link_tienda"]
-                nueva_cat = m["categoria"] if m["categoria"] and (not r["categoria"] or r["categoria"] != m["categoria"]) else r["categoria"]
+                # Sobrescribir siempre con lo que traiga TN (incluso vacio) para limpiar categorias fuera de REMERAS
+                nueva_cat = m["categoria"] or None
                 if (nueva_img != r["imagen_url"]) or (nueva_link != r["link_tienda"]) or (nueva_cat != r["categoria"]):
                     cur.execute(
                         "UPDATE stock SET imagen_url=%s, link_tienda=%s, categoria=%s WHERE id=%s;",

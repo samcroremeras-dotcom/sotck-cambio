@@ -204,32 +204,53 @@ def eliminar_remera(id: int):
 @app.post("/api/importar-excel")
 async def importar_excel(file: UploadFile = File(...)):
     contents = await file.read()
-    wb = openpyxl.load_workbook(io.BytesIO(contents))
-    ws = wb.active
-    headers = [str(cell.value).lower().strip() for cell in ws[1]]
-    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+    total = 0
+    por_hoja = {}
     with get_conn() as conn:
         with conn.cursor() as cur:
-            contador = 0
-            for row in rows:
-                data = dict(zip(headers, row))
-                if not data.get("nombre"):
+            for ws in wb.worksheets:
+                if ws.max_row < 2:
                     continue
-                cur.execute("""
-                    INSERT INTO stock (nombre, categoria, talle, color, cantidad, imagen_url, link_tienda)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    str(data.get("nombre", "")),
-                    str(data.get("categoria", "")),
-                    str(data.get("talle", "")),
-                    str(data.get("color", "")),
-                    int(data.get("cantidad") or 0),
-                    str(data.get("imagen_url", "")),
-                    str(data.get("link_tienda", ""))
-                ))
-                contador += 1
+                headers = [str(c.value).lower().strip() if c.value is not None else "" for c in ws[1]]
+                if "nombre" not in headers:
+                    por_hoja[ws.title] = 0
+                    continue
+                count = 0
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    data = dict(zip(headers, row))
+                    if not data.get("nombre"):
+                        continue
+                    cur.execute("""
+                        INSERT INTO stock (nombre, categoria, talle, color, cantidad, imagen_url, link_tienda)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        str(data.get("nombre", "")),
+                        str(data.get("categoria", "") or ws.title),
+                        str(data.get("talle", "")),
+                        str(data.get("color", "")),
+                        int(data.get("cantidad") or 0),
+                        str(data.get("imagen_url", "")),
+                        str(data.get("link_tienda", ""))
+                    ))
+                    count += 1
+                por_hoja[ws.title] = count
+                total += count
             conn.commit()
-    return {"ok": True, "importadas": contador}
+    return {"ok": True, "importadas": total, "hojas": por_hoja}
+
+
+@app.post("/api/stock/vaciar")
+async def vaciar_stock(confirmacion: str = ""):
+    if confirmacion != "BORRAR TODO EL STOCK":
+        raise HTTPException(status_code=400, detail="Confirmación inválida")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM stock;")
+            antes = cur.fetchone()["n"]
+            cur.execute("DELETE FROM stock;")
+            conn.commit()
+    return {"ok": True, "borradas": antes}
 
 @app.get("/api/exportar-excel")
 def exportar_excel():
@@ -1307,6 +1328,8 @@ header h1::before{content:"";width:8px;height:8px;background:var(--accent-2);dis
 .btn-green{background:var(--ink);color:var(--accent-ink);border-color:var(--ink);font-weight:700}
 .btn-green:hover{background:#1f1f1f;border-color:#1f1f1f}
 .btn-blue{background:transparent;color:var(--ink);border-color:var(--line-2)}
+.btn-danger{background:transparent;color:var(--err);border-color:var(--err)}
+.btn-danger:hover{background:var(--err);color:#fff;border-color:var(--err)}
 main{padding:0}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--line)}
 .stat{padding:1.5rem 1.75rem;border-right:1px solid var(--line);position:relative}
@@ -1370,6 +1393,7 @@ main{padding:0}
       <button class="btn" onclick="document.getElementById('fi').click()" title="Importar stock desde Excel">Importar</button>
       <button class="btn" onclick="exportar()" title="Exportar stock a Excel">Exportar</button>
       <button class="btn" onclick="actualizarImagenes()" title="Sincronizar imagenes desde Tienda Nube">Sync imagenes</button>
+      <button class="btn btn-danger" onclick="vaciarStock()" title="Borra TODO el stock de la base de datos">Vaciar stock</button>
     </span>
     <span class="tb-sep"></span>
     <button class="btn" onclick="abrirTokenGlobal()" title="Generar link de cambio para un cliente">Generar link de cambio</button>
@@ -1601,10 +1625,31 @@ function importar(input) {
   fd.append('file', input.files[0]);
   fetch('/api/importar-excel', {method: 'POST', body: fd})
     .then(function(r){ return r.json(); })
-    .then(function(data){ alert('Importadas: ' + data.importadas + ' remeras'); input.value = ''; cargar(); });
+    .then(function(data){
+      var msg = 'Importadas: ' + data.importadas + ' remeras';
+      if (data.hojas) {
+        msg += '\\n\\nPor hoja:';
+        Object.keys(data.hojas).forEach(function(h){ msg += '\\n  \u2022 ' + h + ': ' + data.hojas[h]; });
+      }
+      alert(msg); input.value = ''; cargar();
+    });
 }
 
 function exportar() { window.location.href = '/api/exportar-excel'; }
+
+function vaciarStock(){
+  if (!confirm('\u26A0\uFE0F PASO 1/3\\n\\nEsto va a BORRAR TODO el stock de la base de datos.\\nNo se puede deshacer.\\n\\n\u00BFSeguir?')) return;
+  if (!confirm('\u26A0\uFE0F PASO 2/3\\n\\nREALMENTE estas seguro? Se pierden TODAS las remeras cargadas.\\n\\nRecomendado: antes exportar a Excel.\\n\\n\u00BFConfirmar?')) return;
+  var t = prompt('PASO 3/3\\n\\nEscribi exactamente:\\nBORRAR TODO EL STOCK\\n\\npara confirmar:');
+  if (t !== 'BORRAR TODO EL STOCK') { alert('Cancelado. El texto no coincide.'); return; }
+  fetch('/api/stock/vaciar?confirmacion=' + encodeURIComponent(t), {method:'POST'})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if (!x.ok) { alert('Error: ' + (x.d.detail || '')); return; }
+      alert('Stock vaciado. Se borraron ' + x.d.borradas + ' remeras.');
+      cargar();
+    });
+}
 
 function abrirTokenGlobal() {
   document.getElementById('torden').value = '';

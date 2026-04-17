@@ -697,7 +697,8 @@ def pagina_cambio(token: str):
         "nombre": str(r["nombre"] or ""),
         "talle": str(r["talle"] or ""),
         "color": str(r["color"] or ""),
-        "imagen_url": str(r["imagen_url"] or "")
+        "imagen_url": str(r["imagen_url"] or ""),
+        "categoria": str(r["categoria"] or "")
     } for r in remeras])
 
     html = """<!DOCTYPE html>
@@ -788,6 +789,7 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 .chips-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-600);margin:.25rem 0 .35rem}
 .chips-wrap{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:.75rem;scrollbar-width:none}
 .chips-wrap::-webkit-scrollbar{display:none}
+@media(min-width:720px){.chips-wrap{flex-wrap:wrap;overflow-x:visible}}
 .chip{border:1.5px solid var(--gray-100);border-radius:20px;padding:.3rem .9rem;font-size:.78rem;font-weight:600;background:var(--white);color:var(--gray-600);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
 .chip.sel{border-color:var(--black);background:var(--black);color:var(--white)}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.65rem}

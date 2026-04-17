@@ -734,7 +734,8 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 .btn-primary{width:100%;padding:1rem;border-radius:var(--radius-sm);background:var(--black);color:var(--white);border:none;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .15s}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed}
 .btn-secondary{width:100%;padding:.85rem;border-radius:var(--radius-sm);background:var(--white);color:var(--black);border:1.5px solid var(--gray-100);font-size:.9rem;font-weight:600;cursor:pointer;margin-top:.5rem}
-.btn-confirm{background:var(--green)}
+.btn-confirm{background:var(--green);padding:1.15rem;font-size:1.05rem;font-weight:800;letter-spacing:.01em;box-shadow:0 8px 22px -10px rgba(16,185,129,.55)}
+.btn-confirm:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 12px 26px -10px rgba(16,185,129,.7)}
 .error-msg{background:var(--red-light);color:#991b1b;border-radius:var(--radius-sm);padding:.75rem 1rem;font-size:.85rem;margin-bottom:1rem;display:none}
 .error-msg.show{display:block}
 
@@ -784,7 +785,8 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 .picker-input:focus{outline:none;border-color:var(--black)}
 .picker-count{font-size:.78rem;color:var(--gray-500);margin:.35rem 0 .75rem;font-weight:500}
 @media(max-width:440px){.picker-filters{grid-template-columns:1fr}}
-.chips-wrap{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:1rem;scrollbar-width:none}
+.chips-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-600);margin:.25rem 0 .35rem}
+.chips-wrap{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:.75rem;scrollbar-width:none}
 .chips-wrap::-webkit-scrollbar{display:none}
 .chip{border:1.5px solid var(--gray-100);border-radius:20px;padding:.3rem .9rem;font-size:.78rem;font-weight:600;background:var(--white);color:var(--gray-600);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
 .chip.sel{border-color:var(--black);background:var(--black);color:var(--white)}
@@ -842,12 +844,11 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 <div class="screen" id="screen-seleccion">
   <p class="cliente-greeting">Hola</p>
   <h1 class="cliente-name" id="cliente-name"></h1>
-  <p class="intro">Para cada remera de tu orden, elegi cual queres recibir a cambio.</p>
+  <p class="intro">Marc&aacute; solo las remeras que quer&eacute;s cambiar. Las que no marques llegan tal cual las compraste.</p>
   <div id="originales-wrap"></div>
   <div class="bottom-actions">
-    <button class="btn-primary btn-confirm" id="finalizar-btn" onclick="finalizar()" disabled>Confirmar mis elecciones</button>
-    <button class="btn-secondary" onclick="guardarYSalir()">Guardar y volver luego</button>
-    <button class="guia-link" onclick="abrirGuia()">Ver guia de talles</button>
+    <button class="btn-primary btn-confirm" id="finalizar-btn" onclick="finalizar()" disabled>Confirmar mi cambio</button>
+    <button class="guia-link" onclick="abrirGuia()">Ver gu&iacute;a de talles</button>
   </div>
 </div>
 
@@ -855,15 +856,17 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 <div class="picker" id="picker">
   <div class="picker-head">
     <button class="picker-close" onclick="cerrarPicker()">&#10005;</button>
-    <span class="picker-title">Elegi la remera nueva</span>
-    <button class="guia-link" style="color:#fff;margin:0;font-size:.75rem" onclick="abrirGuia()">Talles</button>
+    <span class="picker-title">Eleg&iacute; la remera nueva</span>
+    <button class="guia-link" style="color:#fff;margin:0;font-size:.75rem" onclick="abrirGuia()">Gu&iacute;a talles</button>
   </div>
   <div class="picker-body">
     <div class="picker-filters">
       <input id="picker-q" class="picker-input" placeholder="Buscar por nombre o color..." oninput="renderPickerGrid()">
-      <select id="picker-cat" class="picker-input" onchange="renderPickerGrid()"><option value="">Todas las categorias</option></select>
     </div>
+    <div class="chips-label">Talle</div>
     <div class="chips-wrap" id="picker-chips"></div>
+    <div class="chips-label">Categor&iacute;a</div>
+    <div class="chips-wrap" id="picker-chips-cat"></div>
     <div class="picker-count" id="picker-count"></div>
     <div class="grid" id="picker-grid"></div>
   </div>
@@ -873,8 +876,8 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 <div class="screen" id="screen-success">
   <div class="success-wrap">
     <div class="success-ring">&#10003;</div>
-    <h2 class="success-title">Recibimos tu eleccion</h2>
-    <p class="success-body">Te vamos a escribir por WhatsApp cuando recibamos tu prenda original para coordinar el envio del cambio.</p>
+    <h2 class="success-title">Recibimos tu elecci&oacute;n</h2>
+    <p class="success-body">Te vamos a escribir por WhatsApp cuando recibamos tu prenda original para coordinar el env&iacute;o del cambio.</p>
   </div>
 </div>
 
@@ -883,11 +886,11 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
     <div class="modal-head">
-      <h3>Guia de talles</h3>
+      <h3>Gu&iacute;a de talles</h3>
       <button class="modal-close" onclick="cerrarGuia()">&#10005;</button>
     </div>
     <div style="flex:1;overflow:auto;padding:1rem;background:#f7f7f7">
-      <img src="/guia-talles.img" alt="Guia de talles" style="width:100%;height:auto;display:block;border-radius:8px" onerror="this.style.display='none';var n=document.createElement('p');n.style.cssText='padding:2rem;text-align:center;color:#666';n.textContent='Guia de talles aun no disponible. Escribinos por WhatsApp.';this.parentElement.appendChild(n);">
+      <img src="/guia-talles.img" alt="Guia de talles" style="width:100%;height:auto;display:block;border-radius:8px" onerror="this.style.display='none';var n=document.createElement('p');n.style.cssText='padding:2rem;text-align:center;color:#666';n.textContent='Gu\u00eda de talles a\u00fan no disponible. Escribinos por WhatsApp.';this.parentElement.appendChild(n);">
     </div>
   </div>
 </div>
@@ -903,6 +906,7 @@ var SELECCIONES = {};
 var MARCADAS = {};
 var pickerIndex = -1;
 var talleFiltro = '';
+var catFiltro = '';
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
@@ -1057,7 +1061,7 @@ function renderOriginales() {
         '<div class="rep-label">Recibis</div>' +
         '<div class="rep-name"></div>' +
         '<div class="rep-meta"></div>' +
-        '<button class="rep-change">Cambiar eleccion</button>';
+        '<button class="rep-change">Cambiar elecci\u00f3n</button>';
       ri.querySelector('.rep-name').textContent = sel.nombre || '';
       ri.querySelector('.rep-meta').textContent = 'Talle ' + (sel.talle || '-') + (sel.color ? ' \u00b7 ' + sel.color : '');
       ri.querySelector('.rep-change').onclick = function(){ abrirPicker(i); };
@@ -1077,7 +1081,7 @@ function renderOriginales() {
     quitarWrap.style.marginBottom = '1.5rem';
     var quitar = document.createElement('button');
     quitar.className = 'btn-quitar';
-    quitar.textContent = 'No cambiar esta';
+    quitar.textContent = 'No cambiar \u00e9sta';
     quitar.onclick = function(idx){ return function(e){ e.stopPropagation(); delete MARCADAS[idx]; delete SELECCIONES[idx]; renderOriginales(); }; }(i);
     quitarWrap.appendChild(quitar);
     wrap.appendChild(quitarWrap);
@@ -1096,8 +1100,8 @@ function actualizarBotonFinalizar() {
 function abrirPicker(index) {
   pickerIndex = index;
   talleFiltro = '';
+  catFiltro = '';
   document.getElementById('picker-q').value = '';
-  document.getElementById('picker-cat').value = '';
   var ts = {}, cs = {};
   var ORDEN_TALLE = ['XS','S','M','L','XL','XXL','XXXL','3XL','4XL','5XL','6XL','7XL'];
   STOCK.forEach(function(r){
@@ -1122,20 +1126,31 @@ function abrirPicker(index) {
   }
   addChip('Todos', '');
   talles.forEach(function(t){ addChip(t, t); });
-  var catSel = document.getElementById('picker-cat');
-  var cats = Object.keys(cs).sort(function(a,b){ return a.localeCompare(b,'es'); });
-  catSel.innerHTML = '<option value="">Todas las categorias</option>' +
-    cats.map(function(c){ return '<option>' + c.replace(/</g,'&lt;') + '</option>'; }).join('');
+  var chipsCat = document.getElementById('picker-chips-cat');
+  chipsCat.innerHTML = '';
+  function addChipCat(label, valor) {
+    var b = document.createElement('button');
+    b.className = 'chip' + (valor === catFiltro ? ' sel' : '');
+    b.textContent = label;
+    b.onclick = function(){
+      catFiltro = valor;
+      document.querySelectorAll('#picker-chips-cat .chip').forEach(function(c){ c.classList.remove('sel'); });
+      b.classList.add('sel');
+      renderPickerGrid();
+    };
+    chipsCat.appendChild(b);
+  }
+  addChipCat('Todas', '');
+  Object.keys(cs).sort(function(a,b){ return a.localeCompare(b,'es'); }).forEach(function(c){ addChipCat(c, c); });
   renderPickerGrid();
   document.getElementById('picker').classList.add('open');
 }
 
 function renderPickerGrid() {
   var q = (document.getElementById('picker-q').value || '').trim().toLowerCase();
-  var cat = document.getElementById('picker-cat').value;
   var filtradas = STOCK.filter(function(r){
     if (talleFiltro && r.talle !== talleFiltro) return false;
-    if (cat && r.categoria !== cat) return false;
+    if (catFiltro && r.categoria !== catFiltro) return false;
     if (q) {
       var hay = ((r.nombre||'') + ' ' + (r.color||'') + ' ' + (r.categoria||'')).toLowerCase();
       if (hay.indexOf(q) < 0) return false;
@@ -1143,7 +1158,7 @@ function renderPickerGrid() {
     return true;
   });
   var c = document.getElementById('picker-count');
-  if (c) c.textContent = filtradas.length + (filtradas.length === 1 ? ' opcion disponible' : ' opciones disponibles');
+  if (c) c.textContent = filtradas.length + (filtradas.length === 1 ? ' opci\u00f3n disponible' : ' opciones disponibles');
   var g = document.getElementById('picker-grid');
   g.innerHTML = '';
   if (!filtradas.length) {
@@ -1205,27 +1220,13 @@ function _payloadSelecciones() {
   return arr;
 }
 
-function guardarYSalir() {
-  var sel = _payloadSelecciones();
-  if (!sel.length) {
-    alert('Todavia no elegiste ninguna remera');
-    return;
-  }
-  fetch('/api/cambios/seleccionar', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({token: TOKEN, email: EMAIL, selecciones: sel, finalizar: false})
-  }).then(function(r){ return r.json(); })
-    .then(function(){ alert('Guardamos tu progreso. Podes volver al link cuando quieras.'); });
-}
-
 function finalizar() {
   var sel = _payloadSelecciones();
   if (sel.length === 0) {
-    alert('Marca al menos una remera para cambiar');
+    alert('Marc\u00e1 al menos una remera para cambiar');
     return;
   }
-  if (!confirm('Vas a cambiar ' + sel.length + ' remera(s). Una vez confirmado no podes modificar tu eleccion. Continuar?')) return;
+  if (!confirm('Vas a cambiar ' + sel.length + ' remera(s). Una vez confirmado no pod\u00e9s modificar tu elecci\u00f3n. \u00bfContinuar?')) return;
   var btn = document.getElementById('finalizar-btn');
   btn.disabled = true;
   btn.textContent = 'Confirmando...';
@@ -1238,14 +1239,14 @@ function finalizar() {
       if (res.ok) { showScreen('screen-success'); }
       else {
         btn.disabled = false;
-        btn.textContent = 'Confirmar mis elecciones';
+        btn.textContent = 'Confirmar mi cambio';
         alert('Error: ' + (res.data.detail || 'no se pudo finalizar'));
       }
     })
     .catch(function(){
       btn.disabled = false;
       btn.textContent = 'Confirmar mis elecciones';
-      alert('Error de conexion');
+      alert('Error de conexi\u00f3n');
     });
 }
 

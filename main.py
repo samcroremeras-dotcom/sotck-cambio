@@ -1285,23 +1285,20 @@ main{padding:1.5rem 2rem}
 <div class="modal-bg" id="mtoken">
   <div class="modal">
     <h2>Generar link de cambio</h2>
-    <div class="field"><label>Numero de orden</label><input id="torden" placeholder="10042"></div>
-    <div class="field"><label>Cantidad de remeras a cambiar</label>
-      <select id="tcantidad">
-        <option value="1">1 remera</option>
-        <option value="2">2 remeras</option>
-        <option value="3">3 remeras</option>
-        <option value="4">4 remeras</option>
-      </select>
-    </div>
+    <div class="field"><label>Numero de orden de Tienda Nube</label><input id="torden" placeholder="10042"></div>
+    <p style="font-size:.75rem;color:#666;margin-top:-.4rem;margin-bottom:.75rem">Buscamos la orden y sus productos en Tienda Nube automaticamente.</p>
     <div class="modal-actions">
-      <button class="btn" onclick="document.getElementById('mtoken').classList.remove('open')">Cancelar</button>
-      <button class="btn btn-green" onclick="genToken()">Generar link</button>
+      <button class="btn" onclick="document.getElementById('mtoken').classList.remove('open')">Cerrar</button>
+      <button class="btn btn-green" id="tbtn" onclick="genToken()">Generar link</button>
     </div>
     <div class="token-box" id="tresult" style="display:none">
-      <p>Link generado (expira en 72hs):</p>
-      <a id="tlink" href="#" target="_blank"></a>
+      <p style="font-weight:600;margin-bottom:.5rem">Link generado (expira en 5 dias)</p>
+      <p style="font-size:.75rem;margin-bottom:.5rem"><strong>Cliente:</strong> <span id="tcli"></span></p>
+      <p style="font-size:.75rem;margin-bottom:.5rem"><strong>Email:</strong> <span id="temail"></span></p>
+      <p style="font-size:.75rem;margin-bottom:.5rem"><strong>Productos en la orden:</strong> <span id="tprods"></span></p>
+      <a id="tlink" href="#" target="_blank" style="display:block;margin-top:.5rem;word-break:break-all"></a>
     </div>
+    <div id="terror" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:.75rem;margin-top:1rem;font-size:.8rem"></div>
   </div>
 </div>
    
@@ -1454,14 +1451,39 @@ function abrirToken(id) {
 }
 
 function genToken() {
-  var orden = document.getElementById('torden').value;
+  var orden = document.getElementById('torden').value.trim();
   if (!orden) { alert('Ingresa el numero de orden'); return; }
-  fetch('/api/tokens?orden_nro=' + orden, {method: 'POST'})
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      document.getElementById('tlink').textContent = data.link;
-      document.getElementById('tlink').href = data.link;
+  var btn = document.getElementById('tbtn');
+  btn.disabled = true;
+  btn.textContent = 'Buscando orden...';
+  document.getElementById('tresult').style.display = 'none';
+  document.getElementById('terror').style.display = 'none';
+  fetch('/api/tokens?orden_nro=' + encodeURIComponent(orden), {method: 'POST'})
+    .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, status: r.status, data: d}; }); })
+    .then(function(res){
+      btn.disabled = false;
+      btn.textContent = 'Generar link';
+      if (!res.ok) {
+        document.getElementById('terror').textContent = 'Error: ' + (res.data.detail || 'no se pudo generar el link');
+        document.getElementById('terror').style.display = 'block';
+        return;
+      }
+      var d = res.data;
+      document.getElementById('tcli').textContent = d.cliente_nombre || '(sin nombre)';
+      document.getElementById('temail').textContent = d.cliente_email || '(sin email)';
+      var prods = (d.productos_originales || []).map(function(p){
+        return p.nombre + (p.talle ? ' (' + p.talle + ')' : '');
+      }).join(', ') || '(sin productos)';
+      document.getElementById('tprods').textContent = prods;
+      document.getElementById('tlink').textContent = d.link;
+      document.getElementById('tlink').href = d.link;
       document.getElementById('tresult').style.display = 'block';
+    })
+    .catch(function(){
+      btn.disabled = false;
+      btn.textContent = 'Generar link';
+      document.getElementById('terror').textContent = 'Error de conexion';
+      document.getElementById('terror').style.display = 'block';
     });
 }
 

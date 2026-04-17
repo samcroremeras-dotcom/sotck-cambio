@@ -1377,13 +1377,22 @@ def sincronizar_tn():
         if p.get("images"):
             img = p["images"][0].get("src", "") or ""
         link = p.get("canonical_url") or p.get("permalink") or ""
-        cats_ids = p.get("categories") or []
+        cats_raw_prod = p.get("categories") or []
+        # TN puede devolver categorias como lista de dicts {id,...} o de ids sueltos
+        cats_ids = []
+        for c in cats_raw_prod:
+            if isinstance(c, dict):
+                if c.get("id") is not None:
+                    cats_ids.append(c["id"])
+            else:
+                cats_ids.append(c)
         cat_str = ""
         if cats_ids:
-            # elegimos la categoria mas profunda (mayor longitud de ruta)
-            rutas = [(ruta_cat(cid), cid) for cid in cats_ids]
-            rutas.sort(key=lambda x: len(x[0] or ""), reverse=True)
-            cat_str = rutas[0][0] if rutas else ""
+            rutas = [ruta_cat(cid) for cid in cats_ids]
+            rutas = [r for r in rutas if r]
+            if rutas:
+                rutas.sort(key=lambda x: len(x), reverse=True)
+                cat_str = rutas[0]
         prod_map[norm(nombre_tn)] = {"imagen": img, "link": link, "categoria": cat_str}
 
     # 3) recorrer stock y actualizar

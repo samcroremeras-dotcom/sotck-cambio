@@ -1339,7 +1339,12 @@ main{padding:0}
 .stat p{font-family:var(--mono);font-size:.65rem;color:var(--ink-mute);letter-spacing:.18em;text-transform:uppercase;margin-bottom:.5rem}
 .stat h2{font-family:var(--mono);font-size:2.4rem;font-weight:500;letter-spacing:-.02em;line-height:1;color:var(--ink)}
 .stat::after{content:"";position:absolute;top:1.5rem;right:1.75rem;width:4px;height:4px;background:var(--accent-2);border-radius:50%}
-.toolbar{padding:1rem 1.75rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:.7rem;color:var(--ink-mute);letter-spacing:.12em;text-transform:uppercase}
+.toolbar{padding:.75rem 1.75rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:1rem;font-family:var(--mono);font-size:.7rem;color:var(--ink-mute);letter-spacing:.12em;text-transform:uppercase;flex-wrap:wrap}
+.tb-left{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;flex:1;min-width:0}
+.tb-input{font-family:var(--sans);font-size:.82rem;padding:.5rem .65rem;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:0;text-transform:none;letter-spacing:0;min-width:200px}
+.tb-input:focus{outline:none;border-color:var(--ink)}
+.tb-sel{min-width:170px;cursor:pointer}
+.btn-gray{border-color:var(--line-2);color:var(--ink-dim)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0;padding:0}
 .card{background:var(--surface);border-right:1px solid var(--line);border-bottom:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column;transition:background .12s}
 .card:hover{background:var(--surface-2)}
@@ -1409,7 +1414,21 @@ main{padding:0}
     <div class="stat"><p>Unidades</p><h2 id="su">-</h2></div>
     <div class="stat"><p>Sin stock</p><h2 id="ss">-</h2></div>
   </div>
-  <div class="toolbar"><span>// Catalogo</span><span id="tb-count">-</span></div>
+  <div class="toolbar">
+    <div class="tb-left">
+      <span>// Catalogo</span>
+      <input id="q" class="tb-input" placeholder="Buscar por nombre, color..." oninput="aplicarFiltros()">
+      <select id="fcatF" class="tb-input tb-sel" onchange="aplicarFiltros()"><option value="">Todas las categorias</option></select>
+      <select id="ftF" class="tb-input tb-sel" onchange="aplicarFiltros()"><option value="">Todos los talles</option></select>
+      <select id="fstockF" class="tb-input tb-sel" onchange="aplicarFiltros()">
+        <option value="">Todo el stock</option>
+        <option value="con">Con stock</option>
+        <option value="sin">Sin stock</option>
+      </select>
+      <button class="btn btn-gray" onclick="limpiarFiltros()" title="Limpiar filtros">Limpiar</button>
+    </div>
+    <span id="tb-count">-</span>
+  </div>
   <div class="grid" id="grid"><p class="empty">Cargando...</p></div>
 </main>
 
@@ -1532,8 +1551,58 @@ function cargar() {
     .catch(function(){});
 }
 
+function aplicarFiltros(){ renderizar(); }
+
+function limpiarFiltros(){
+  document.getElementById('q').value = '';
+  document.getElementById('fcatF').value = '';
+  document.getElementById('ftF').value = '';
+  document.getElementById('fstockF').value = '';
+  renderizar();
+}
+
+function poblarFiltros(){
+  var cats = {}, talles = {};
+  for (var i = 0; i < remeras.length; i++) {
+    if (remeras[i].categoria) cats[remeras[i].categoria] = true;
+    if (remeras[i].talle) talles[remeras[i].talle] = true;
+  }
+  var ORDEN_TALLE = ['XS','S','M','L','XL','XXL','XXXL','4XL','5XL','6XL','7XL'];
+  function fill(id, keys, orden){
+    var sel = document.getElementById(id);
+    var prev = sel.value;
+    var head = sel.querySelector('option[value=""]').outerHTML;
+    var sorted;
+    if (orden) {
+      sorted = orden.filter(function(x){ return keys[x]; }).concat(Object.keys(keys).filter(function(x){ return orden.indexOf(x)<0; }).sort());
+    } else {
+      sorted = Object.keys(keys).sort(function(a,b){ return a.localeCompare(b,'es'); });
+    }
+    sel.innerHTML = head + sorted.map(function(k){ return '<option value="'+esc(k)+'">'+esc(k)+'</option>'; }).join('');
+    sel.value = prev;
+  }
+  fill('fcatF', cats);
+  fill('ftF', talles, ORDEN_TALLE);
+}
+
 function renderizar() {
   var grid = document.getElementById('grid');
+  poblarFiltros();
+  var q = (document.getElementById('q').value || '').trim().toLowerCase();
+  var fcat = document.getElementById('fcatF').value;
+  var ft = document.getElementById('ftF').value;
+  var fs = document.getElementById('fstockF').value;
+  var filtradas = remeras.filter(function(r){
+    if (fcat && r.categoria !== fcat) return false;
+    if (ft && r.talle !== ft) return false;
+    if (fs === 'con' && !(r.cantidad > 0)) return false;
+    if (fs === 'sin' && (r.cantidad || 0) > 0) return false;
+    if (q) {
+      var hay = ((r.nombre||'') + ' ' + (r.color||'') + ' ' + (r.categoria||'')).toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
   var total = remeras.length;
   var unidades = 0;
   var sin = 0;
@@ -1544,11 +1613,18 @@ function renderizar() {
   document.getElementById('st').textContent = total;
   document.getElementById('su').textContent = unidades;
   document.getElementById('ss').textContent = sin;
-  var tbc = document.getElementById('tb-count'); if (tbc) tbc.textContent = total + ' SKU / ' + unidades + ' UNID';
+  var unidFiltradas = 0;
+  for (var j = 0; j < filtradas.length; j++) unidFiltradas += filtradas[j].cantidad || 0;
+  var tbc = document.getElementById('tb-count');
+  if (tbc) {
+    if (filtradas.length === total) tbc.textContent = total + ' SKU / ' + unidades + ' UNID';
+    else tbc.textContent = filtradas.length + ' / ' + total + ' SKU \u00B7 ' + unidFiltradas + ' UNID';
+  }
   if (!total) { grid.innerHTML = '<p class="empty">// No hay remeras en stock</p>'; return; }
+  if (!filtradas.length) { grid.innerHTML = '<p class="empty">// Sin resultados con estos filtros</p>'; return; }
   var html = '';
-  for (var i = 0; i < remeras.length; i++) {
-    var r = remeras[i];
+  for (var i = 0; i < filtradas.length; i++) {
+    var r = filtradas[i];
     var qty = r.cantidad || 0;
     html += '<div class="card">';
     html += '<div class="img-wrap">';

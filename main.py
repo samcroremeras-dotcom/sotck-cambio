@@ -868,7 +868,7 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
     <div class="chips-label">Talle</div>
     <div class="chips-wrap" id="picker-chips"></div>
     <div class="chips-label">Categor&iacute;a</div>
-    <div class="chips-wrap" id="picker-chips-cat"></div>
+    <select id="picker-cat" class="picker-input" onchange="catFiltro=this.value;renderPickerGrid()" style="margin-bottom:.75rem"><option value="">Todas las categor&iacute;as</option></select>
     <div class="picker-count" id="picker-count"></div>
     <div class="grid" id="picker-grid"></div>
   </div>
@@ -1128,22 +1128,11 @@ function abrirPicker(index) {
   }
   addChip('Todos', '');
   talles.forEach(function(t){ addChip(t, t); });
-  var chipsCat = document.getElementById('picker-chips-cat');
-  chipsCat.innerHTML = '';
-  function addChipCat(label, valor) {
-    var b = document.createElement('button');
-    b.className = 'chip' + (valor === catFiltro ? ' sel' : '');
-    b.textContent = label;
-    b.onclick = function(){
-      catFiltro = valor;
-      document.querySelectorAll('#picker-chips-cat .chip').forEach(function(c){ c.classList.remove('sel'); });
-      b.classList.add('sel');
-      renderPickerGrid();
-    };
-    chipsCat.appendChild(b);
-  }
-  addChipCat('Todas', '');
-  Object.keys(cs).sort(function(a,b){ return a.localeCompare(b,'es'); }).forEach(function(c){ addChipCat(c, c); });
+  var catSel = document.getElementById('picker-cat');
+  var cats = Object.keys(cs).sort(function(a,b){ return a.localeCompare(b,'es'); });
+  catSel.innerHTML = '<option value="">Todas las categor\u00edas</option>' +
+    cats.map(function(c){ return '<option value="'+c.replace(/"/g,'&quot;')+'">' + c.replace(/</g,'&lt;') + '</option>'; }).join('');
+  catSel.value = '';
   renderPickerGrid();
   document.getElementById('picker').classList.add('open');
 }

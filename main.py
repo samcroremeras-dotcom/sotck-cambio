@@ -242,7 +242,7 @@ async def importar_excel(file: UploadFile = File(...)):
 
 @app.post("/api/stock/vaciar")
 async def vaciar_stock(confirmacion: str = ""):
-    if confirmacion != "BORRAR TODO EL STOCK":
+    if confirmacion != "BORRAR":
         raise HTTPException(status_code=400, detail="Confirmación inválida")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1639,11 +1639,10 @@ function importar(input) {
 function exportar() { window.location.href = '/api/exportar-excel'; }
 
 function vaciarStock(){
-  if (!confirm('\u26A0\uFE0F PASO 1/3\\n\\nEsto va a BORRAR TODO el stock de la base de datos.\\nNo se puede deshacer.\\n\\n\u00BFSeguir?')) return;
-  if (!confirm('\u26A0\uFE0F PASO 2/3\\n\\nREALMENTE estas seguro? Se pierden TODAS las remeras cargadas.\\n\\nRecomendado: antes exportar a Excel.\\n\\n\u00BFConfirmar?')) return;
-  var t = prompt('PASO 3/3\\n\\nEscribi exactamente:\\nBORRAR TODO EL STOCK\\n\\npara confirmar:');
-  if (t !== 'BORRAR TODO EL STOCK') { alert('Cancelado. El texto no coincide.'); return; }
-  fetch('/api/stock/vaciar?confirmacion=' + encodeURIComponent(t), {method:'POST'})
+  if (!confirm('\u26A0\uFE0F Esto va a BORRAR TODO el stock.\\nNo se puede deshacer.\\n\\n\u00BFSeguir?')) return;
+  var t = prompt('Escribi "BORRAR" (en may\u00FAsculas) para confirmar:');
+  if (t !== 'BORRAR') { alert('Cancelado.'); return; }
+  fetch('/api/stock/vaciar?confirmacion=BORRAR', {method:'POST'})
     .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
     .then(function(x){
       if (!x.ok) { alert('Error: ' + (x.d.detail || '')); return; }

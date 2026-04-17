@@ -4,7 +4,7 @@ import uuid
 import requests
 import json
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from psycopg2.extras import RealDictCursor
@@ -59,6 +59,13 @@ def init_db():
                 ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS cliente_id BIGINT;
                 ALTER TABLE cambios ADD COLUMN IF NOT EXISTS orden_envio_tn_id BIGINT;
                 ALTER TABLE cambios ADD COLUMN IF NOT EXISTS orden_envio_tn_number TEXT;
+
+                CREATE TABLE IF NOT EXISTS config_files (
+                    clave TEXT PRIMARY KEY,
+                    content_type TEXT,
+                    data BYTEA,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
 
                 CREATE TABLE IF NOT EXISTS cambios (
                     id SERIAL PRIMARY KEY,
@@ -879,7 +886,9 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
       <h3>Guia de talles</h3>
       <button class="modal-close" onclick="cerrarGuia()">&#10005;</button>
     </div>
-    <iframe src="https://www.samcroremeras.com.ar/guia-de-talles/" title="Guia de talles"></iframe>
+    <div style="flex:1;overflow:auto;padding:1rem;background:#f7f7f7">
+      <img src="/guia-talles.img" alt="Guia de talles" style="width:100%;height:auto;display:block;border-radius:8px" onerror="this.parentElement.innerHTML='<p style=\"padding:2rem;text-align:center;color:#666\">Guia de talles aun no disponible. Escribinos por WhatsApp.</p>'">
+    </div>
   </div>
 </div>
 
@@ -1573,8 +1582,10 @@ main{padding:0}
       <button class="btn" onclick="document.getElementById('fi').click()" title="Importar stock desde Excel">Importar</button>
       <button class="btn" onclick="exportar()" title="Exportar stock a Excel">Exportar</button>
       <button class="btn" onclick="sincronizarTN(event)" title="Sincroniza imagenes, links y categorias desde Tienda Nube">Sincronizar con TN</button>
+      <button class="btn" onclick="document.getElementById('fi-guia').click()" title="Subir imagen de guia de talles">Subir guia talles</button>
       <button class="btn btn-danger" onclick="vaciarStock()" title="Borra TODO el stock de la base de datos">Vaciar stock</button>
     </span>
+    <input type="file" id="fi-guia" accept="image/*" style="display:none" onchange="subirGuia(this)">
     <span class="tb-sep"></span>
     <button class="btn" onclick="abrirTokenGlobal()" title="Generar link de cambio para un cliente">Generar link de cambio</button>
     <button class="btn btn-green" onclick="abrirModal()">+ Nueva remera</button>
@@ -1888,6 +1899,20 @@ function importar(input) {
 
 function exportar() { window.location.href = '/api/exportar-excel'; }
 
+function subirGuia(input){
+  var f = input.files[0]; if(!f) return;
+  if(f.size > 5*1024*1024){ alert('Maximo 5MB'); input.value=''; return; }
+  var fd = new FormData(); fd.append('file', f);
+  fetch('/api/guia-talles/subir', {method:'POST', body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+    .then(function(res){
+      if(!res.ok){ alert('Error: ' + (res.d.detail || 'no se pudo subir')); }
+      else { alert('Guia de talles actualizada (' + Math.round(res.d.size/1024) + ' KB)'); }
+      input.value = '';
+    })
+    .catch(function(e){ alert('Error: ' + e); input.value=''; });
+}
+
 function vaciarStock(){
   if (!confirm('\u26A0\uFE0F Esto va a BORRAR TODO el stock.\\nNo se puede deshacer.\\n\\n\u00BFSeguir?')) return;
   var t = prompt('Escribi "BORRAR" (en may\u00FAsculas) para confirmar:');
@@ -2011,6 +2036,42 @@ class SubirImagenPayload(BaseModel):
     product_ids: list
     filename: str
     attachment: str
+
+@app.post("/api/guia-talles/subir")
+async def subir_guia_talles(file: UploadFile = File(...)):
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Archivo vacío")
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Máximo 5MB")
+    ct = file.content_type or "image/png"
+    if not ct.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Debe ser una imagen")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO config_files (clave, content_type, data, updated_at)
+                VALUES ('guia_talles', %s, %s, NOW())
+                ON CONFLICT (clave) DO UPDATE SET content_type=EXCLUDED.content_type, data=EXCLUDED.data, updated_at=NOW();
+            """, (ct, psycopg2.Binary(data)))
+            conn.commit()
+    return {"ok": True, "size": len(data), "content_type": ct}
+
+
+@app.get("/guia-talles.img")
+def ver_guia_talles():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT content_type, data FROM config_files WHERE clave='guia_talles';")
+            row = cur.fetchone()
+    if not row or not row.get("data"):
+        raise HTTPException(status_code=404, detail="Aún no se subió la guía de talles")
+    return Response(
+        content=bytes(row["data"]),
+        media_type=row.get("content_type") or "image/png",
+        headers={"Cache-Control": "public, max-age=600"}
+    )
+
 
 @app.post("/api/subir-tabla-talles")
 def subir_tabla_talles(payload: SubirImagenPayload):

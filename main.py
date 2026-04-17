@@ -887,7 +887,7 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
       <button class="modal-close" onclick="cerrarGuia()">&#10005;</button>
     </div>
     <div style="flex:1;overflow:auto;padding:1rem;background:#f7f7f7">
-      <img src="/guia-talles.img" alt="Guia de talles" style="width:100%;height:auto;display:block;border-radius:8px" onerror="this.parentElement.innerHTML='<p style=\"padding:2rem;text-align:center;color:#666\">Guia de talles aun no disponible. Escribinos por WhatsApp.</p>'">
+      <img src="/guia-talles.img" alt="Guia de talles" style="width:100%;height:auto;display:block;border-radius:8px" onerror="this.style.display='none';var n=document.createElement('p');n.style.cssText='padding:2rem;text-align:center;color:#666';n.textContent='Guia de talles aun no disponible. Escribinos por WhatsApp.';this.parentElement.appendChild(n);">
     </div>
   </div>
 </div>

@@ -217,21 +217,33 @@ async def importar_excel(file: UploadFile = File(...)):
                     por_hoja[ws.title] = 0
                     continue
                 count = 0
+                # Si el nombre de la hoja parece un talle, lo usamos como talle por defecto, no como categoria
+                TALLES = {"XS","S","M","L","XL","XXL","XXXL","3XL","4XL","5XL","6XL","7XL"}
+                hoja_es_talle = ws.title.strip().upper() in TALLES
                 for row in ws.iter_rows(min_row=2, values_only=True):
                     data = dict(zip(headers, row))
-                    if not data.get("nombre"):
+                    nombre = str(data.get("nombre") or "").strip()
+                    if not nombre:
                         continue
+                    low = nombre.lower()
+                    # saltear filas de totales / resumen
+                    if low.startswith("total") or "con link:" in low or "sin link:" in low or low.startswith("subtotal"):
+                        continue
+                    cat_raw = str(data.get("categoria") or "").strip()
+                    talle_raw = str(data.get("talle") or "").strip()
+                    if hoja_es_talle and not talle_raw:
+                        talle_raw = ws.title.strip().upper()
                     cur.execute("""
                         INSERT INTO stock (nombre, categoria, talle, color, cantidad, imagen_url, link_tienda)
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """, (
-                        str(data.get("nombre", "")),
-                        str(data.get("categoria", "") or ws.title),
-                        str(data.get("talle", "")),
-                        str(data.get("color", "")),
+                        nombre,
+                        cat_raw,
+                        talle_raw,
+                        str(data.get("color") or ""),
                         int(data.get("cantidad") or 0),
-                        str(data.get("imagen_url", "")),
-                        str(data.get("link_tienda", ""))
+                        str(data.get("imagen_url") or ""),
+                        str(data.get("link_tienda") or "")
                     ))
                     count += 1
                 por_hoja[ws.title] = count

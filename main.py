@@ -595,6 +595,10 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 .replacement-card{background:var(--white);border-radius:var(--radius);padding:.85rem;margin-bottom:1.5rem;border:1.5px solid var(--gray-100);transition:border-color .15s}
 .replacement-card.empty{border-style:dashed;background:transparent;cursor:pointer;text-align:center;padding:1.5rem 1rem}
 .replacement-card.empty:hover{border-color:var(--black);background:var(--white)}
+.btn-elegir{width:100%;padding:1rem;border-radius:var(--radius);background:var(--white);color:var(--black);border:1.5px dashed var(--gray-300);font-size:.9rem;font-weight:600;cursor:pointer;margin-bottom:1.5rem;transition:all .15s}
+.btn-elegir:hover{border-color:var(--black);border-style:solid}
+.btn-quitar{background:none;border:none;color:var(--red);font-size:.75rem;cursor:pointer;padding:.4rem .6rem;text-decoration:underline}
+.no-cambia-pill{display:flex;align-items:center;justify-content:space-between;background:var(--gray-50);color:var(--gray-600);font-size:.8rem;font-weight:500;padding:.75rem 1rem;border-radius:var(--radius);margin-bottom:1.5rem;border:1px solid var(--gray-100)}
 .replacement-empty-icon{font-size:1.5rem;margin-bottom:.4rem;color:var(--gray-400)}
 .replacement-empty-text{font-size:.85rem;font-weight:600;color:var(--gray-600)}
 .replacement-empty-hint{font-size:.75rem;color:var(--gray-400);margin-top:.2rem}
@@ -726,6 +730,7 @@ var NOMBRE = '';
 var ORDEN_NRO = '';
 var PRODUCTOS_ORIGINALES = [];
 var SELECCIONES = {};
+var MARCADAS = {};
 var pickerIndex = -1;
 var talleFiltro = '';
 
@@ -780,6 +785,7 @@ function login() {
               color: c.remera_elegida_color,
               imagen_url: c.remera_elegida_imagen
             };
+            MARCADAS[i] = true;
             break;
           }
         }
@@ -837,12 +843,21 @@ function renderOriginales() {
     orig.appendChild(info);
     wrap.appendChild(orig);
 
+    var sel = SELECCIONES[i];
+    var marcada = MARCADAS[i];
+    if (!marcada) {
+      var btn = document.createElement('button');
+      btn.className = 'btn-elegir';
+      btn.textContent = '+ Cambiar esta remera';
+      btn.onclick = function(idx){ return function(){ MARCADAS[idx] = true; renderOriginales(); }; }(i);
+      wrap.appendChild(btn);
+      return;
+    }
     var arrow = document.createElement('div');
     arrow.className = 'swap-arrow';
     arrow.textContent = '\u2193';
     wrap.appendChild(arrow);
 
-    var sel = SELECCIONES[i];
     var rep = document.createElement('div');
     if (sel) {
       rep.className = 'replacement-card';
@@ -887,13 +902,25 @@ function renderOriginales() {
         '<div class="replacement-empty-hint">Ver opciones disponibles</div>';
     }
     wrap.appendChild(rep);
+    var quitarWrap = document.createElement('div');
+    quitarWrap.style.textAlign = 'center';
+    quitarWrap.style.marginBottom = '1.5rem';
+    var quitar = document.createElement('button');
+    quitar.className = 'btn-quitar';
+    quitar.textContent = 'No cambiar esta';
+    quitar.onclick = function(idx){ return function(e){ e.stopPropagation(); delete MARCADAS[idx]; delete SELECCIONES[idx]; renderOriginales(); }; }(i);
+    quitarWrap.appendChild(quitar);
+    wrap.appendChild(quitarWrap);
   });
   actualizarBotonFinalizar();
 }
 
 function actualizarBotonFinalizar() {
-  var todas = PRODUCTOS_ORIGINALES.length > 0 && PRODUCTOS_ORIGINALES.every(function(_, i){ return SELECCIONES[i]; });
-  document.getElementById('finalizar-btn').disabled = !todas;
+  var hayMarcada = false, faltaSel = false;
+  for (var k in MARCADAS) {
+    if (MARCADAS[k]) { hayMarcada = true; if (!SELECCIONES[k]) faltaSel = true; }
+  }
+  document.getElementById('finalizar-btn').disabled = !(hayMarcada && !faltaSel);
 }
 
 function abrirPicker(index) {
@@ -966,6 +993,7 @@ function renderPickerGrid() {
 function elegirRemera(r) {
   if (pickerIndex >= 0) {
     SELECCIONES[pickerIndex] = r;
+    MARCADAS[pickerIndex] = true;
     cerrarPicker();
     renderOriginales();
   }
@@ -1000,11 +1028,11 @@ function guardarYSalir() {
 
 function finalizar() {
   var sel = _payloadSelecciones();
-  if (sel.length !== PRODUCTOS_ORIGINALES.length) {
-    alert('Te falta elegir alguna remera');
+  if (sel.length === 0) {
+    alert('Marca al menos una remera para cambiar');
     return;
   }
-  if (!confirm('Una vez confirmado no vas a poder cambiar tu eleccion. Continuar?')) return;
+  if (!confirm('Vas a cambiar ' + sel.length + ' remera(s). Una vez confirmado no podes modificar tu eleccion. Continuar?')) return;
   var btn = document.getElementById('finalizar-btn');
   btn.disabled = true;
   btn.textContent = 'Confirmando...';

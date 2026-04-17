@@ -387,10 +387,18 @@ def guardar_seleccion(payload: GuardarSeleccionPayload):
                 if s.producto_original_index < 0 or s.producto_original_index >= len(productos_originales):
                     continue
                 prod_orig = productos_originales[s.producto_original_index]
-                cur.execute("SELECT id, nombre, talle, color, imagen_url FROM stock WHERE id=%s;", (s.remera_id,))
+                cur.execute("""
+                    SELECT s.id, s.nombre, s.talle, s.color, s.imagen_url,
+                           s.cantidad - COALESCE((
+                               SELECT COUNT(*) FROM cambios
+                               WHERE remera_elegida_id = s.id
+                                 AND estado IN ('pendiente_recepcion','pendiente_aprobacion')
+                           ), 0) AS disponible
+                    FROM stock s WHERE s.id=%s;
+                """, (s.remera_id,))
                 stock = cur.fetchone()
-                if not stock:
-                    continue
+                if not stock or (stock.get("disponible") or 0) <= 0:
+                    raise HTTPException(status_code=409, detail=f"La remera {stock['nombre'] if stock else ''} talle {stock['talle'] if stock else ''} ya fue reservada por otro cliente. Volve a elegir.")
                 cur.execute("""
                     INSERT INTO cambios
                       (token_id, orden_nro, cliente_email, producto_original,
@@ -531,7 +539,18 @@ def pagina_cambio(token: str):
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, nombre, talle, color, imagen_url FROM stock WHERE cantidad > 0 ORDER BY nombre, talle;")
+            cur.execute("""
+                SELECT s.id, s.nombre, s.talle, s.color, s.imagen_url
+                FROM stock s
+                LEFT JOIN (
+                    SELECT remera_elegida_id, COUNT(*) AS reservadas
+                    FROM cambios
+                    WHERE estado IN ('pendiente_recepcion','pendiente_aprobacion')
+                    GROUP BY remera_elegida_id
+                ) c ON c.remera_elegida_id = s.id
+                WHERE s.cantidad - COALESCE(c.reservadas, 0) > 0
+                ORDER BY s.nombre, s.talle;
+            """)
             remeras = cur.fetchall()
 
     remeras_json = json.dumps([{

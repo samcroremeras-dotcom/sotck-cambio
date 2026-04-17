@@ -47,6 +47,42 @@ def init_db():
                     usado BOOLEAN DEFAULT FALSE,
                     remera_elegida_id INTEGER REFERENCES stock(id)
                 );
+                ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS cliente_email TEXT;
+                ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS cliente_nombre TEXT;
+                ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS productos_originales JSONB;
+                ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS finalizado BOOLEAN DEFAULT FALSE;
+                ALTER TABLE tokens_cambio ADD COLUMN IF NOT EXISTS creado_en TIMESTAMP DEFAULT NOW();
+
+                CREATE TABLE IF NOT EXISTS cambios (
+                    id SERIAL PRIMARY KEY,
+                    token_id TEXT REFERENCES tokens_cambio(token_id),
+                    orden_nro TEXT,
+                    cliente_email TEXT,
+                    producto_original JSONB,
+                    remera_elegida_id INTEGER REFERENCES stock(id),
+                    remera_elegida_nombre TEXT,
+                    remera_elegida_talle TEXT,
+                    remera_elegida_color TEXT,
+                    remera_elegida_imagen TEXT,
+                    estado TEXT DEFAULT 'pendiente_recepcion',
+                    motivo_rechazo TEXT,
+                    aprobado_por TEXT,
+                    aprobado_en TIMESTAMP,
+                    creado_en TIMESTAMP DEFAULT NOW(),
+                    actualizado_en TIMESTAMP DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS cambios_historial (
+                    id SERIAL PRIMARY KEY,
+                    cambio_id INTEGER REFERENCES cambios(id) ON DELETE CASCADE,
+                    token_id TEXT,
+                    accion TEXT,
+                    datos JSONB,
+                    creado_en TIMESTAMP DEFAULT NOW()
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_cambios_token ON cambios(token_id);
+                CREATE INDEX IF NOT EXISTS idx_cambios_estado ON cambios(estado);
             """)
             conn.commit()
 
@@ -206,18 +242,266 @@ def exportar_excel():
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=stock.xlsx"})
 
+def _tn_buscar_orden(orden_nro: str):
+    """Busca una orden en Tienda Nube por su numero. Devuelve dict o None."""
+    try:
+        res = requests.get(
+            f"https://api.tiendanube.com/v1/{TN_STORE_ID}/orders",
+            headers={
+                "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+            },
+            params={"q": orden_nro, "per_page": 5}
+        )
+        if res.status_code != 200:
+            return None
+        ordenes = res.json()
+        for o in ordenes:
+            if str(o.get("number")) == str(orden_nro):
+                return o
+        return ordenes[0] if ordenes else None
+    except Exception:
+        return None
+
+
 @app.post("/api/tokens")
-def crear_token(orden_nro: str, cantidad: int = 1):
+def crear_token(orden_nro: str):
+    orden = _tn_buscar_orden(orden_nro)
+    if not orden:
+        raise HTTPException(status_code=404, detail="Orden no encontrada en Tienda Nube")
+
+    cliente = orden.get("customer") or {}
+    cliente_email = (cliente.get("email") or "").lower().strip()
+    cliente_nombre = cliente.get("name") or ""
+
+    productos_originales = []
+    for prod in (orden.get("products") or []):
+        productos_originales.append({
+            "id": prod.get("id"),
+            "product_id": prod.get("product_id"),
+            "variant_id": prod.get("variant_id"),
+            "nombre": prod.get("name") or "",
+            "talle": ((prod.get("variant_values") or [None])[0] if prod.get("variant_values") else None) or "",
+            "cantidad": prod.get("quantity") or 1,
+            "imagen": (prod.get("image") or {}).get("src") if isinstance(prod.get("image"), dict) else "",
+            "precio": prod.get("price")
+        })
+
     token = str(uuid.uuid4())[:8]
-    expira = datetime.now() + timedelta(hours=72)
+    expira = datetime.now() + timedelta(days=5)
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO tokens_cambio (token_id, orden_nro, expira_at, cantidad_cambios)
-                VALUES (%s, %s, %s, %s);
-            """, (token, orden_nro, expira, cantidad))
+                INSERT INTO tokens_cambio
+                  (token_id, orden_nro, expira_at, cliente_email, cliente_nombre, productos_originales, finalizado)
+                VALUES (%s, %s, %s, %s, %s, %s, FALSE);
+            """, (token, str(orden_nro), expira, cliente_email, cliente_nombre, json.dumps(productos_originales)))
             conn.commit()
-    return {"token": token, "link": f"https://samcro-stock-production.up.railway.app/cambios/{token}"}
+
+    return {
+        "token": token,
+        "link": f"https://samcro-stock-production.up.railway.app/cambios/{token}",
+        "cliente_email": cliente_email,
+        "cliente_nombre": cliente_nombre,
+        "productos_originales": productos_originales,
+        "expira_at": expira.isoformat()
+    }
+
+
+class ValidarAccesoPayload(BaseModel):
+    token: str
+    email: str
+
+@app.post("/api/validar-acceso")
+def validar_acceso(payload: ValidarAccesoPayload):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM tokens_cambio WHERE token_id=%s;", (payload.token,))
+            t = cur.fetchone()
+    if not t:
+        raise HTTPException(status_code=404, detail="Link invalido")
+    if datetime.now() > t["expira_at"]:
+        raise HTTPException(status_code=410, detail="Link expirado")
+    if t.get("finalizado"):
+        raise HTTPException(status_code=409, detail="Cambio ya finalizado")
+    if (t.get("cliente_email") or "").lower().strip() != payload.email.lower().strip():
+        raise HTTPException(status_code=403, detail="Email no coincide con la orden")
+    return {
+        "ok": True,
+        "orden_nro": t["orden_nro"],
+        "cliente_nombre": t.get("cliente_nombre") or "",
+        "productos_originales": t.get("productos_originales") or [],
+        "expira_at": t["expira_at"].isoformat()
+    }
+
+
+class SeleccionItem(BaseModel):
+    producto_original_index: int
+    remera_id: int
+
+class GuardarSeleccionPayload(BaseModel):
+    token: str
+    email: str
+    selecciones: list[SeleccionItem]
+    finalizar: bool = False
+
+@app.post("/api/cambios/seleccionar")
+def guardar_seleccion(payload: GuardarSeleccionPayload):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM tokens_cambio WHERE token_id=%s;", (payload.token,))
+            t = cur.fetchone()
+            if not t:
+                raise HTTPException(status_code=404, detail="Link invalido")
+            if datetime.now() > t["expira_at"]:
+                raise HTTPException(status_code=410, detail="Link expirado")
+            if t.get("finalizado"):
+                raise HTTPException(status_code=409, detail="Cambio ya finalizado")
+            if (t.get("cliente_email") or "").lower().strip() != payload.email.lower().strip():
+                raise HTTPException(status_code=403, detail="Email no coincide")
+
+            productos_originales = t.get("productos_originales") or []
+
+            # Borrar selecciones previas no aprobadas y volver a crear
+            cur.execute("""
+                DELETE FROM cambios
+                WHERE token_id=%s AND estado IN ('pendiente_recepcion','pendiente_aprobacion');
+            """, (payload.token,))
+
+            cambios_creados = []
+            for s in payload.selecciones:
+                if s.producto_original_index < 0 or s.producto_original_index >= len(productos_originales):
+                    continue
+                prod_orig = productos_originales[s.producto_original_index]
+                cur.execute("SELECT id, nombre, talle, color, imagen_url FROM stock WHERE id=%s;", (s.remera_id,))
+                stock = cur.fetchone()
+                if not stock:
+                    continue
+                cur.execute("""
+                    INSERT INTO cambios
+                      (token_id, orden_nro, cliente_email, producto_original,
+                       remera_elegida_id, remera_elegida_nombre, remera_elegida_talle,
+                       remera_elegida_color, remera_elegida_imagen, estado)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'pendiente_recepcion')
+                    RETURNING id;
+                """, (
+                    payload.token, t["orden_nro"], t["cliente_email"], json.dumps(prod_orig),
+                    stock["id"], stock["nombre"], stock["talle"],
+                    stock["color"], stock["imagen_url"]
+                ))
+                cid = cur.fetchone()["id"]
+                cur.execute("""
+                    INSERT INTO cambios_historial (cambio_id, token_id, accion, datos)
+                    VALUES (%s,%s,'seleccion_creada',%s);
+                """, (cid, payload.token, json.dumps({
+                    "remera_id": stock["id"],
+                    "remera_nombre": stock["nombre"],
+                    "talle": stock["talle"],
+                    "color": stock["color"]
+                })))
+                cambios_creados.append(cid)
+
+            if payload.finalizar:
+                cur.execute("UPDATE tokens_cambio SET finalizado=TRUE WHERE token_id=%s;", (payload.token,))
+
+            conn.commit()
+    return {"ok": True, "cambios_ids": cambios_creados, "finalizado": payload.finalizar}
+
+
+@app.get("/api/cambios/pendientes")
+def listar_cambios_pendientes(estado: str = ""):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if estado:
+                cur.execute("SELECT * FROM cambios WHERE estado=%s ORDER BY creado_en DESC;", (estado,))
+            else:
+                cur.execute("""
+                    SELECT * FROM cambios
+                    WHERE estado IN ('pendiente_recepcion','pendiente_aprobacion')
+                    ORDER BY creado_en DESC;
+                """)
+            return cur.fetchall()
+
+
+class AprobarPayload(BaseModel):
+    aprobado_por: str = "admin"
+
+@app.post("/api/cambios/{cambio_id}/aprobar")
+def aprobar_cambio(cambio_id: int, payload: AprobarPayload):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cambios WHERE id=%s;", (cambio_id,))
+            c = cur.fetchone()
+            if not c:
+                raise HTTPException(status_code=404, detail="Cambio no encontrado")
+            if c["estado"] == "aprobado":
+                return {"ok": True, "ya_aprobado": True}
+
+            # Descontar stock de la remera nueva
+            cur.execute(
+                "UPDATE stock SET cantidad = GREATEST(cantidad - 1, 0) WHERE id=%s;",
+                (c["remera_elegida_id"],)
+            )
+            # Sumar stock de la remera devuelta si la encontramos en stock por nombre+talle
+            prod_orig = c.get("producto_original") or {}
+            nombre_orig = (prod_orig.get("nombre") or "").strip()
+            talle_orig = (prod_orig.get("talle") or "").strip()
+            if nombre_orig and talle_orig:
+                cur.execute("""
+                    UPDATE stock SET cantidad = cantidad + 1
+                    WHERE LOWER(TRIM(nombre)) = LOWER(%s) AND LOWER(TRIM(talle)) = LOWER(%s);
+                """, (nombre_orig, talle_orig))
+
+            cur.execute("""
+                UPDATE cambios
+                SET estado='aprobado', aprobado_por=%s, aprobado_en=NOW(), actualizado_en=NOW()
+                WHERE id=%s;
+            """, (payload.aprobado_por, cambio_id))
+
+            cur.execute("""
+                INSERT INTO cambios_historial (cambio_id, token_id, accion, datos)
+                VALUES (%s,%s,'aprobado',%s);
+            """, (cambio_id, c["token_id"], json.dumps({"aprobado_por": payload.aprobado_por})))
+            conn.commit()
+    return {"ok": True}
+
+
+class RechazarPayload(BaseModel):
+    motivo: str
+    aprobado_por: str = "admin"
+
+@app.post("/api/cambios/{cambio_id}/rechazar")
+def rechazar_cambio(cambio_id: int, payload: RechazarPayload):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cambios WHERE id=%s;", (cambio_id,))
+            c = cur.fetchone()
+            if not c:
+                raise HTTPException(status_code=404, detail="Cambio no encontrado")
+            cur.execute("""
+                UPDATE cambios
+                SET estado='rechazado', motivo_rechazo=%s, aprobado_por=%s,
+                    aprobado_en=NOW(), actualizado_en=NOW()
+                WHERE id=%s;
+            """, (payload.motivo, payload.aprobado_por, cambio_id))
+            cur.execute("""
+                INSERT INTO cambios_historial (cambio_id, token_id, accion, datos)
+                VALUES (%s,%s,'rechazado',%s);
+            """, (cambio_id, c["token_id"], json.dumps({"motivo": payload.motivo, "por": payload.aprobado_por})))
+            conn.commit()
+    return {"ok": True}
+
+
+@app.get("/api/cambios/{cambio_id}/historial")
+def historial_cambio(cambio_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM cambios_historial
+                WHERE cambio_id=%s ORDER BY creado_en ASC;
+            """, (cambio_id,))
+            return cur.fetchall()
 
 @app.get("/cambios/{token}", response_class=HTMLResponse)
 def pagina_cambio(token: str):

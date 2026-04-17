@@ -254,163 +254,187 @@ def pagina_cambio(token: str):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Elegi tu cambio - Samcro Remeras</title>
+<title>Elegí tu cambio - Samcro Remeras</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#f5f5f5;color:#111;min-height:100vh}
 header{background:#111;color:#fff;padding:1rem 1.5rem;text-align:center}
 header h1{font-size:1rem;font-weight:600;letter-spacing:.05em}
 header p{font-size:.8rem;color:#aaa;margin-top:2px}
-.paso{display:none;padding:1.5rem}
-.paso.activo{display:block}
-.paso-titulo{font-size:1.1rem;font-weight:600;margin-bottom:.5rem}
-.paso-sub{font-size:.85rem;color:#666;margin-bottom:1.5rem}
-.talles{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin-bottom:1.5rem}
-.talle-btn{border:1.5px solid #ddd;border-radius:8px;padding:.75rem;text-align:center;font-size:.9rem;font-weight:500;background:#fff;cursor:pointer}
-.talle-btn.sel{border-color:#111;background:#111;color:#fff}
-.guia-link{font-size:.8rem;color:#2563eb;text-align:center;display:block;margin-bottom:1.5rem}
-.btn-primary{width:100%;padding:.85rem;border-radius:8px;background:#111;color:#fff;border:none;font-size:.95rem;font-weight:500;cursor:pointer}
-.btn-primary:disabled{background:#ccc}
-.grid-remeras{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem;margin-bottom:1.5rem}
-.remera-card{background:#fff;border-radius:10px;border:2px solid transparent;overflow:hidden;cursor:pointer}
-.remera-card.sel{border-color:#111}
-.remera-card img{width:100%;height:200px;object-fit:contain;background:#f5f5f5;padding:8px}
-.remera-card .info{padding:.6rem}
-.remera-card h3{font-size:.8rem;font-weight:600;margin-bottom:2px}
-.remera-card p{font-size:.75rem;color:#666}
-.confirm-box{background:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem;border:1px solid #e5e5e5}
-.confirm-box label{font-size:.75rem;color:#666}
-.confirm-box p{font-size:.95rem;font-weight:500;margin-top:2px}
-.success{text-align:center;padding:2rem 1.5rem}
-.success-icon{width:60px;height:60px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem}
-.volver{background:none;border:none;color:#666;font-size:.85rem;cursor:pointer;margin-bottom:1rem;padding:0}
-.guia-btn{font-size:.8rem;color:#2563eb;background:none;border:none;cursor:pointer;display:block;width:100%;text-align:center;margin-bottom:1.5rem;padding:0}
-.modal-talles{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center}
+.vista{display:none;padding:1.5rem}
+.vista.activa{display:block}
+.filtros-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem}
+.filtros-header h2{font-size:1rem;font-weight:600}
+.guia-link{font-size:.8rem;color:#2563eb;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.25rem}
+.chip{border:1.5px solid #ddd;border-radius:20px;padding:.35rem .85rem;font-size:.8rem;font-weight:500;background:#fff;cursor:pointer;white-space:nowrap}
+.chip.sel{border-color:#111;background:#111;color:#fff}
+.chip.todos{border-color:#ddd}
+.grid-remeras{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+.remera-card{background:#fff;border-radius:10px;border:2px solid transparent;overflow:hidden;cursor:pointer;transition:border-color .15s}
+.remera-card:active{opacity:.85}
+.remera-card img{width:100%;height:170px;object-fit:contain;background:#f5f5f5;padding:6px}
+.remera-card .info{padding:.5rem .6rem}
+.remera-card h3{font-size:.8rem;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.remera-card p{font-size:.72rem;color:#888}
+.sin-stock{color:#999;font-size:.85rem;grid-column:1/-1;padding:1.5rem 0;text-align:center}
+.confirm-header{display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem}
+.confirm-header button{background:none;border:none;color:#666;font-size:.85rem;cursor:pointer;padding:0;text-decoration:underline}
+.confirm-img{width:100%;max-height:220px;object-fit:contain;background:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem}
+.confirm-box{background:#fff;border-radius:10px;padding:.85rem 1rem;margin-bottom:.6rem;border:1px solid #e5e5e5}
+.confirm-box label{font-size:.72rem;color:#888;display:block;margin-bottom:2px}
+.confirm-box p{font-size:.95rem;font-weight:500}
+.btn-primary{width:100%;padding:.85rem;border-radius:8px;background:#111;color:#fff;border:none;font-size:.95rem;font-weight:500;cursor:pointer;margin-top:.5rem}
+.success{text-align:center;padding:3rem 1.5rem}
+.success-icon{width:64px;height:64px;border-radius:50%;background:#f0fdf4;border:2px solid #bbf7d0;display:flex;align-items:center;justify-content:center;margin:0 auto 1.25rem;font-size:1.6rem}
+.modal-talles{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:flex-end;justify-content:center}
 .modal-talles.open{display:flex}
-.modal-talles-inner{background:#fff;border-radius:12px;width:95%;max-width:500px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column}
-.modal-talles-header{padding:.75rem 1rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e5e5}
+.modal-talles-inner{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:560px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column}
+.modal-talles-header{padding:.85rem 1rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e5e5}
 .modal-talles-header h3{font-size:.95rem;font-weight:600}
-.modal-talles-close{background:none;border:none;font-size:1.2rem;cursor:pointer;color:#666}
-.modal-talles iframe{flex:1;border:none;min-height:70vh}
+.modal-talles-close{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#666;line-height:1}
+.modal-talles iframe{flex:1;border:none;min-height:75vh}
 </style>
 </head>
 <body>
 <header>
   <h1>SAMCRO REMERAS</h1>
-  <p>Orden #""" + str(orden_nro) + """ &middot; Link valido por 24hs</p>
+  <p>Orden #""" + str(orden_nro) + """</p>
 </header>
 
-<div id="p1" class="paso activo">
-  <p class="paso-titulo" style="margin-top:1rem">Que talle usas?</p>
-  <p class="paso-sub">Si no estas seguro usa la guia de medidas.</p>
-  <div class="talles" id="talles-grid"></div>
-  <button class="guia-btn" onclick="abrirGuia()">No se mi talle, ver guia de medidas</button>
-
-<div class="modal-talles" id="modal-talles">
-  <div class="modal-talles-inner">
-    <div class="modal-talles-header">
-      <h3>Guia de talles</h3>
-      <button class="modal-talles-close" onclick="cerrarGuia()">&#10005;</button>
-    </div>
-    <iframe src="https://www.samcroremeras.com.ar/guia-de-talles/" title="Guia de talles"></iframe>
+<!-- Vista 1: catálogo con filtro de talle -->
+<div id="v1" class="vista activa">
+  <div class="filtros-header" style="margin-top:1.25rem">
+    <h2>Elegí tu remera</h2>
+    <button class="guia-link" onclick="abrirGuia()">&#128210; Guía de talles</button>
   </div>
-</div>
-  <button class="btn-primary" id="btn-ver" onclick="verOpciones()" disabled>Ver opciones disponibles</button>
-</div>
-
-<div id="p2" class="paso">
-  <button class="volver" onclick="irPaso(1)">volver</button>
-  <p class="paso-titulo">Opciones en talle <span id="talle-elegido"></span></p>
-  <p class="paso-sub">Toca la que mas te guste.</p>
+  <div class="chips" id="chips"></div>
   <div class="grid-remeras" id="grid-remeras"></div>
 </div>
 
-<div id="p3" class="paso">
-  <button class="volver" onclick="irPaso(2)">volver</button>
-  <p class="paso-titulo">Confirma tu eleccion</p>
-  <p class="paso-sub" style="margin-bottom:1rem">Una vez confirmado te avisamos cuando llega.</p>
+<!-- Vista 2: confirmación -->
+<div id="v2" class="vista">
+  <div class="confirm-header" style="margin-top:1rem">
+    <button onclick="irVista(1)">&#8592; Cambiar elección</button>
+  </div>
+  <img id="conf-img" class="confirm-img" src="" alt="" onerror="this.style.display='none'">
   <div class="confirm-box"><label>Remera elegida</label><p id="conf-nombre"></p></div>
   <div class="confirm-box"><label>Talle</label><p id="conf-talle"></p></div>
   <div class="confirm-box"><label>Color</label><p id="conf-color"></p></div>
   <button class="btn-primary" onclick="confirmar()">Confirmar cambio</button>
 </div>
 
-<div id="p4" class="paso">
+<!-- Vista 3: éxito -->
+<div id="v3" class="vista">
   <div class="success">
-    <div class="success-icon">OK</div>
-    <h2 style="font-size:1.1rem;margin-bottom:.5rem">Listo, recibimos tu eleccion</h2>
-    <p style="font-size:.85rem;color:#666;line-height:1.6">Te vamos a escribir por WhatsApp para coordinar el envio. Gracias por tu paciencia.</p>
+    <div class="success-icon">&#10003;</div>
+    <h2 style="font-size:1.1rem;margin-bottom:.6rem">¡Listo! Recibimos tu elección</h2>
+    <p style="font-size:.85rem;color:#666;line-height:1.7">Te vamos a escribir por WhatsApp para coordinar el envío. ¡Gracias!</p>
+  </div>
+</div>
+
+<!-- Modal guía de talles (bottom sheet) -->
+<div class="modal-talles" id="modal-talles" onclick="cerrarGuia()">
+  <div class="modal-talles-inner" onclick="event.stopPropagation()">
+    <div class="modal-talles-header">
+      <h3>Guía de talles</h3>
+      <button class="modal-talles-close" onclick="cerrarGuia()">&#10005;</button>
+    </div>
+    <iframe src="https://www.samcroremeras.com.ar/guia-de-talles/" title="Guía de talles"></iframe>
   </div>
 </div>
 
 <script>
 var remeras = """ + remeras_json + """;
-var tallesSel = '';
 var remeraSel = null;
+var talleFiltro = '';
 var TOKEN = '""" + str(token_id) + """';
-window.onload = function() {
-  var ts = {};
-  remeras.forEach(function(r) { ts[r.talle] = true; });
-  var talles = Object.keys(ts).sort();
-  var g = document.getElementById('talles-grid');
-  talles.forEach(function(t) {
-    var b = document.createElement('button');
-    b.className = 'talle-btn';
-    b.textContent = t;
-    b.onclick = function() {
-      document.querySelectorAll('.talle-btn').forEach(function(x){ x.classList.remove('sel'); });
-      b.classList.add('sel');
-      tallesSel = t;
-      document.getElementById('btn-ver').disabled = false;
-    };
-    g.appendChild(b);
-  });
-};
+
+function irVista(n) {
+  document.querySelectorAll('.vista').forEach(function(v){ v.classList.remove('activa'); });
+  document.getElementById('v' + n).classList.add('activa');
+  window.scrollTo(0, 0);
+}
 
 function abrirGuia() { document.getElementById('modal-talles').classList.add('open'); }
 function cerrarGuia() { document.getElementById('modal-talles').classList.remove('open'); }
 
-function irPaso(n) {
-  document.querySelectorAll('.paso').forEach(function(p){ p.classList.remove('activo'); });
-  document.getElementById('p' + n).classList.add('activo');
+window.onload = function() {
+  var ts = {};
+  remeras.forEach(function(r){ ts[r.talle] = true; });
+  var talles = Object.keys(ts).sort();
+  var chips = document.getElementById('chips');
+  var todos = document.createElement('button');
+  todos.className = 'chip todos sel';
+  todos.textContent = 'Todos';
+  todos.onclick = function(){ setFiltro('', todos); };
+  chips.appendChild(todos);
+  talles.forEach(function(t) {
+    var b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = t;
+    b.onclick = function(){ setFiltro(t, b); };
+    chips.appendChild(b);
+  });
+  renderGrid();
+};
+
+function setFiltro(talle, btn) {
+  talleFiltro = talle;
+  document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('sel'); });
+  btn.classList.add('sel');
+  renderGrid();
 }
 
-function verOpciones() {
-  var filtradas = remeras.filter(function(r){ return r.talle === tallesSel; });
+function renderGrid() {
+  var filtradas = talleFiltro
+    ? remeras.filter(function(r){ return r.talle === talleFiltro; })
+    : remeras;
   var g = document.getElementById('grid-remeras');
-  document.getElementById('talle-elegido').textContent = tallesSel;
   if (!filtradas.length) {
-    g.innerHTML = '<p style="color:#666;font-size:.85rem;grid-column:1/-1">No hay opciones en este talle.</p>';
-  } else {
-    g.innerHTML = filtradas.map(function(r) {
-      return '<div class="remera-card" onclick="selRemera(' + r.id + ', this)">' +
-        '<img src="' + r.imagen_url + '" onerror="this.style.display=&quot;none&quot;" alt="">' +
-        '<div class="info"><h3>' + r.nombre + '</h3><p>' + r.color + '</p></div></div>';
-    }).join('');
+    g.innerHTML = '<p class="sin-stock">No hay remeras disponibles en este talle.</p>';
+    return;
   }
-  irPaso(2);
+  g.innerHTML = filtradas.map(function(r) {
+    return '<div class="remera-card" onclick="selRemera(' + r.id + ')">' +
+      '<img src="' + r.imagen_url + '" onerror="this.style.display=\'none\'" alt="">' +
+      '<div class="info"><h3>' + r.nombre + '</h3><p>' + (r.color || '') + ' &middot; ' + r.talle + '</p></div></div>';
+  }).join('');
 }
 
-function selRemera(id, el) {
+function selRemera(id) {
   remeraSel = remeras.find(function(r){ return r.id === id; });
-  document.querySelectorAll('.remera-card').forEach(function(c){ c.classList.remove('sel'); });
-  el.classList.add('sel');
   document.getElementById('conf-nombre').textContent = remeraSel.nombre;
   document.getElementById('conf-talle').textContent = remeraSel.talle;
   document.getElementById('conf-color').textContent = remeraSel.color || '-';
-  setTimeout(function(){ irPaso(3); }, 300);
+  var img = document.getElementById('conf-img');
+  img.src = remeraSel.imagen_url || '';
+  img.style.display = remeraSel.imagen_url ? 'block' : 'none';
+  irVista(2);
 }
 
 function confirmar() {
   if (!remeraSel) return;
+  var btn = document.querySelector('#v2 .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'Confirmando...';
   fetch('/api/confirmar-cambio', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({token: TOKEN, remera_id: remeraSel.id})
   }).then(function(r){ return r.json(); })
     .then(function(data){
-      if (data.ok) { irPaso(4); }
-      else { alert('Hubo un error, intenta de nuevo.'); }
+      if (data.ok) { irVista(3); }
+      else {
+        btn.disabled = false;
+        btn.textContent = 'Confirmar cambio';
+        alert('Hubo un error, intentá de nuevo.');
+      }
+    })
+    .catch(function(){
+      btn.disabled = false;
+      btn.textContent = 'Confirmar cambio';
+      alert('Error de conexión, intentá de nuevo.');
     });
 }
 </script>

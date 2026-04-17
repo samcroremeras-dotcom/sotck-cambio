@@ -684,18 +684,46 @@ function renderGrid() {
     g.innerHTML = '<p class="sin-stock">No hay remeras disponibles en este talle.</p>';
     return;
   }
-  g.innerHTML = filtradas.map(function(r) {
-    var img = r.imagen_url
-      ? '<img class="card-img" src="' + r.imagen_url + '" alt="' + r.nombre + '" onerror="this.outerHTML=\'<div class=card-img-placeholder>sin imagen</div>\'">'
-      : '<div class="card-img-placeholder">sin imagen</div>';
-    return '<div class="card" onclick="selRemera(' + r.id + ')">' +
-      img +
-      '<div class="card-body">' +
-        '<div class="card-name">' + r.nombre + '</div>' +
-        '<div class="card-meta">' + (r.color || '') + '</div>' +
-        '<span class="card-talle-badge">' + r.talle + '</span>' +
-      '</div></div>';
-  }).join('');
+  g.innerHTML = '';
+  filtradas.forEach(function(r) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.onclick = function(){ selRemera(r.id); };
+    if (r.imagen_url) {
+      var im = document.createElement('img');
+      im.className = 'card-img';
+      im.src = r.imagen_url;
+      im.alt = r.nombre || '';
+      im.onerror = function(){
+        var ph = document.createElement('div');
+        ph.className = 'card-img-placeholder';
+        ph.textContent = 'sin imagen';
+        im.replaceWith(ph);
+      };
+      card.appendChild(im);
+    } else {
+      var ph = document.createElement('div');
+      ph.className = 'card-img-placeholder';
+      ph.textContent = 'sin imagen';
+      card.appendChild(ph);
+    }
+    var body = document.createElement('div');
+    body.className = 'card-body';
+    var name = document.createElement('div');
+    name.className = 'card-name';
+    name.textContent = r.nombre || '';
+    var meta = document.createElement('div');
+    meta.className = 'card-meta';
+    meta.textContent = r.color || '';
+    var badge = document.createElement('span');
+    badge.className = 'card-talle-badge';
+    badge.textContent = r.talle || '';
+    body.appendChild(name);
+    body.appendChild(meta);
+    body.appendChild(badge);
+    card.appendChild(body);
+    g.appendChild(card);
+  });
 }
 
 function selRemera(id) {

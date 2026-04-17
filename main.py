@@ -1385,6 +1385,8 @@ def sincronizar_tn():
         cat_map[c["id"]] = {"name": nombre.strip(), "parent": c.get("parent")}
 
     def ruta_cat(cid):
+        """Devuelve la categoria de segundo nivel (hija directa de REMERAS/LISAS/PERSONALIZADAS).
+        Ejemplo: 'REMERAS > MUSICA > HEAVY METAL' -> 'MUSICA'."""
         chain = []
         seen = set()
         while cid and cid not in seen:
@@ -1395,8 +1397,13 @@ def sincronizar_tn():
             if nodo["name"]:
                 chain.append(nodo["name"])
             cid = nodo.get("parent")
-        chain.reverse()
-        return " > ".join(chain)
+        chain.reverse()  # root -> leaf
+        if not chain:
+            return ""
+        # Si hay wrapper top-level (REMERAS, PERSONALIZADAS, LISAS), devolver el hijo directo
+        if len(chain) >= 2:
+            return chain[1]
+        return chain[0]
 
     # 2) productos -> map por nombre normalizado
     productos = _tn_fetch_all("products")

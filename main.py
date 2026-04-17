@@ -1306,6 +1306,125 @@ def get_categorias():
         }
     )
     return res.json()
+
+
+def _tn_fetch_all(path: str, params: dict = None):
+    """Paginate a TN collection endpoint and return all items."""
+    items = []
+    page = 1
+    per = 200
+    while True:
+        p = {"per_page": per, "page": page}
+        if params:
+            p.update(params)
+        r = requests.get(
+            f"https://api.tiendanube.com/v1/{TN_STORE_ID}/{path}",
+            headers={
+                "Authentication": f"bearer {TN_ACCESS_TOKEN}",
+                "User-Agent": "Samcro Stock (samcroremeras@gmail.com)"
+            },
+            params=p,
+            timeout=60
+        )
+        if r.status_code != 200:
+            break
+        data = r.json()
+        if not data:
+            break
+        items.extend(data)
+        if len(data) < per:
+            break
+        page += 1
+        if page > 50:
+            break
+    return items
+
+
+@app.post("/api/sincronizar-tn")
+def sincronizar_tn():
+    """Baja todos los productos y categorias de TN y actualiza imagen + categoria en stock."""
+    # 1) categorias -> {id: {name, parent}}
+    cats_raw = _tn_fetch_all("categories")
+    cat_map = {}
+    for c in cats_raw:
+        nombre = (c.get("name") or {}).get("es") or ""
+        cat_map[c["id"]] = {"name": nombre.strip(), "parent": c.get("parent")}
+
+    def ruta_cat(cid):
+        chain = []
+        seen = set()
+        while cid and cid not in seen:
+            seen.add(cid)
+            nodo = cat_map.get(cid)
+            if not nodo:
+                break
+            if nodo["name"]:
+                chain.append(nodo["name"])
+            cid = nodo.get("parent")
+        chain.reverse()
+        return " > ".join(chain)
+
+    # 2) productos -> map por nombre normalizado
+    productos = _tn_fetch_all("products")
+    def norm(s):
+        return (s or "").strip().lower()
+    prod_map = {}
+    for p in productos:
+        nombre_tn = (p.get("name") or {}).get("es") or ""
+        if not nombre_tn:
+            continue
+        img = ""
+        if p.get("images"):
+            img = p["images"][0].get("src", "") or ""
+        link = p.get("canonical_url") or p.get("permalink") or ""
+        cats_ids = p.get("categories") or []
+        cat_str = ""
+        if cats_ids:
+            # elegimos la categoria mas profunda (mayor longitud de ruta)
+            rutas = [(ruta_cat(cid), cid) for cid in cats_ids]
+            rutas.sort(key=lambda x: len(x[0] or ""), reverse=True)
+            cat_str = rutas[0][0] if rutas else ""
+        prod_map[norm(nombre_tn)] = {"imagen": img, "link": link, "categoria": cat_str}
+
+    # 3) recorrer stock y actualizar
+    img_upd = cat_upd = link_upd = 0
+    sin_match = 0
+    total = 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nombre, imagen_url, link_tienda, categoria FROM stock;")
+            filas = cur.fetchall()
+            total = len(filas)
+            for r in filas:
+                m = prod_map.get(norm(r["nombre"]))
+                if not m:
+                    sin_match += 1
+                    continue
+                nueva_img = m["imagen"] if m["imagen"] and not r["imagen_url"] else r["imagen_url"]
+                nueva_link = m["link"] if m["link"] and not r["link_tienda"] else r["link_tienda"]
+                nueva_cat = m["categoria"] if m["categoria"] and (not r["categoria"] or r["categoria"] != m["categoria"]) else r["categoria"]
+                if (nueva_img != r["imagen_url"]) or (nueva_link != r["link_tienda"]) or (nueva_cat != r["categoria"]):
+                    cur.execute(
+                        "UPDATE stock SET imagen_url=%s, link_tienda=%s, categoria=%s WHERE id=%s;",
+                        (nueva_img, nueva_link, nueva_cat, r["id"])
+                    )
+                    if nueva_img != r["imagen_url"]:
+                        img_upd += 1
+                    if nueva_link != r["link_tienda"]:
+                        link_upd += 1
+                    if nueva_cat != r["categoria"]:
+                        cat_upd += 1
+            conn.commit()
+    return {
+        "ok": True,
+        "total_stock": total,
+        "productos_tn": len(productos),
+        "categorias_tn": len(cats_raw),
+        "imagenes_actualizadas": img_upd,
+        "categorias_actualizadas": cat_upd,
+        "links_actualizados": link_upd,
+        "sin_match": sin_match,
+    }
     
 PANEL_HTML = """<!DOCTYPE html>
 <html lang="es">
@@ -1411,7 +1530,7 @@ main{padding:0}
     <span class="tb-group">
       <button class="btn" onclick="document.getElementById('fi').click()" title="Importar stock desde Excel">Importar</button>
       <button class="btn" onclick="exportar()" title="Exportar stock a Excel">Exportar</button>
-      <button class="btn" onclick="actualizarImagenes()" title="Sincronizar imagenes desde Tienda Nube">Sync imagenes</button>
+      <button class="btn" onclick="sincronizarTN(event)" title="Sincroniza imagenes, links y categorias desde Tienda Nube">Sincronizar con TN</button>
       <button class="btn btn-danger" onclick="vaciarStock()" title="Borra TODO el stock de la base de datos">Vaciar stock</button>
     </span>
     <span class="tb-sep"></span>
@@ -1792,6 +1911,27 @@ function actualizarImagenes() {
   fetch('/api/actualizar-imagenes', {method: 'POST'})
     .then(function(r){ return r.json(); })
     .then(function(data){ alert('Actualizadas: ' + data.actualizadas + ' remeras'); cargar(); });
+}
+
+function sincronizarTN(ev){
+  if (!confirm('Sincronizar im\u00E1genes, links y categor\u00EDas desde Tienda Nube?\\nPuede tardar 1-3 minutos.')) return;
+  var btn = (ev && ev.target) || null; var prev = '';
+  if (btn) { prev = btn.textContent; btn.textContent = 'Sincronizando...'; btn.disabled = true; }
+  fetch('/api/sincronizar-tn', {method:'POST'})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if (btn) { btn.textContent = prev; btn.disabled = false; }
+      if (!x.ok) { alert('Error: ' + (x.d.detail||'')); return; }
+      var d = x.d;
+      alert('Sincronizaci\u00F3n completa\\n\\nProductos TN: ' + d.productos_tn +
+            '\\nCategor\u00EDas TN: ' + d.categorias_tn +
+            '\\nIm\u00E1genes actualizadas: ' + d.imagenes_actualizadas +
+            '\\nCategor\u00EDas actualizadas: ' + d.categorias_actualizadas +
+            '\\nLinks actualizados: ' + d.links_actualizados +
+            '\\nSin match en TN: ' + d.sin_match + ' / ' + d.total_stock);
+      cargar();
+    })
+    .catch(function(){ if (btn) { btn.textContent = prev; btn.disabled = false; } alert('Error de conexi\u00F3n'); });
 }
 cargar();
 </script>

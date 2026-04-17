@@ -641,17 +641,30 @@ var remeras = """ + remeras_json + """;
 var remeraSel = null;
 var talleFiltro = '';
 var TOKEN = '""" + str(token_id) + """';
+var vistaActual = 0;
 
 function irVista(n) {
+  vistaActual = n;
   var track = document.getElementById('track');
   track.style.transform = 'translateX(-' + (n * 100) + 'vw)';
   window.scrollTo(0,0);
+  window.history.pushState({vista: n}, '', '#v' + n);
 }
 
 function abrirGuia(){ document.getElementById('modal-guia').classList.add('open'); }
 function cerrarGuia(){ document.getElementById('modal-guia').classList.remove('open'); }
 
+window.addEventListener('popstate', function(e) {
+  if (e.state && e.state.vista !== undefined) {
+    vistaActual = e.state.vista;
+    var track = document.getElementById('track');
+    track.style.transform = 'translateX(-' + (e.state.vista * 100) + 'vw)';
+    window.scrollTo(0,0);
+  }
+});
+
 window.onload = function() {
+  window.history.pushState({vista: 0}, '', '#v0');
   var ts = {};
   remeras.forEach(function(r){ ts[r.talle] = true; });
   var talles = Object.keys(ts).sort();

@@ -1362,7 +1362,7 @@ main{padding:0}
 <header>
   <h1>SAMCRO_OPS</h1>
   <nav class="nav">
-    <a href="/" class="current">Stock</a>
+    <a href="/panel" class="current">Stock</a>
     <a href="/cambios-admin">Cambios <span class="bdg" id="badge-cambios">0</span></a>
   </nav>
   <div class="actions">
@@ -1435,11 +1435,12 @@ main{padding:0}
     <div class="field"><label>Número de orden de Tienda Nube</label><input id="torden" placeholder="10042"></div>
     <p style="font-size:.7rem;color:var(--ink-mute);margin-top:-.4rem;margin-bottom:.85rem;font-family:var(--mono);letter-spacing:.08em">// Buscamos la orden y sus productos en TN automáticamente</p>
     <div class="field" style="background:var(--surface-2);padding:.85rem;border:1px solid var(--line)">
+      <p style="font-size:.72rem;color:var(--ink-dim);margin-bottom:.55rem;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase">// Por defecto: el cliente paga el envío del cambio</p>
       <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;margin:0;color:var(--ink);text-transform:none;letter-spacing:0;font-family:var(--sans);font-size:.85rem;font-weight:500">
-        <input type="checkbox" id="tenvio" style="width:auto;margin:0">
-        Cliente paga envío del cambio
+        <input type="checkbox" id="tgratis" style="width:auto;margin:0">
+        Cambio sin costo (nosotros cubrimos el envío)
       </label>
-      <p style="font-size:.7rem;color:var(--ink-mute);margin-top:.4rem;margin-left:1.5rem">Si está marcado, al aprobar el cambio se crea una orden en TN con "ENVIO CORREO ARGENTINO" para que el cliente abone.</p>
+      <p style="font-size:.7rem;color:var(--ink-mute);margin-top:.4rem;margin-left:1.5rem">Marcá esta opción solo si el cambio es por cortesía. Si queda sin marcar, al aprobar se genera una orden en TN con "ENVIO CORREO ARGENTINO" para que el cliente abone.</p>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="document.getElementById('mtoken').classList.remove('open')">Cerrar</button>
@@ -1607,7 +1608,7 @@ function exportar() { window.location.href = '/api/exportar-excel'; }
 
 function abrirTokenGlobal() {
   document.getElementById('torden').value = '';
-  document.getElementById('tenvio').checked = false;
+  document.getElementById('tgratis').checked = false;
   document.getElementById('tresult').style.display = 'none';
   document.getElementById('terror').style.display = 'none';
   document.getElementById('mtoken').classList.add('open');
@@ -1622,7 +1623,7 @@ function genToken() {
   btn.textContent = 'Buscando orden...';
   document.getElementById('tresult').style.display = 'none';
   document.getElementById('terror').style.display = 'none';
-  var pagaEnvio = document.getElementById('tenvio').checked ? 'true' : 'false';
+  var pagaEnvio = document.getElementById('tgratis').checked ? 'false' : 'true';
   fetch('/api/tokens?orden_nro=' + encodeURIComponent(orden) + '&cliente_paga_envio=' + pagaEnvio, {method: 'POST'})
     .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, status: r.status, data: d}; }); })
     .then(function(res){
@@ -1760,7 +1761,18 @@ main{padding:0;max-width:none;margin:0}
 .tab.active::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--warn)}
 .tab .count{background:var(--warn);color:#fff;padding:1px 6px;margin-left:.5rem;font-size:.6rem;font-weight:700;letter-spacing:.05em}
 .list{display:flex;flex-direction:column}
-.cambio{background:var(--surface);border-bottom:1px solid var(--line);padding:1.25rem 1.75rem;display:grid;grid-template-columns:64px 1fr 24px 1fr auto;gap:1.25rem;align-items:center;transition:background .12s;position:relative}
+.cambio{background:var(--surface);border-bottom:1px solid var(--line);transition:background .12s;position:relative}
+.cambio-head{padding:1rem 1.75rem;display:grid;grid-template-columns:auto 1fr 1fr auto auto;gap:1.25rem;align-items:center;cursor:pointer;user-select:none}
+.cambio-head:hover{background:var(--surface-2)}
+.cambio-head .ord{font-family:var(--mono);font-size:.95rem;font-weight:600;color:var(--ink);letter-spacing:.04em}
+.cambio-head .ord::before{content:"#";color:var(--ink-mute);margin-right:.1em}
+.cambio-head .cli{font-size:.8rem;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cambio-head .date{font-family:var(--mono);font-size:.68rem;color:var(--ink-mute);letter-spacing:.08em;text-transform:uppercase;text-align:right}
+.cambio-head .chev{font-family:var(--mono);color:var(--ink-mute);transition:transform .15s;font-size:.8rem}
+.cambio.open .chev{transform:rotate(90deg)}
+.cambio-body{display:none;padding:1rem 1.75rem 1.5rem;border-top:1px solid var(--line);background:var(--bg)}
+.cambio.open .cambio-body{display:block}
+.cambio-row{display:grid;grid-template-columns:64px 1fr 24px 1fr auto;gap:1.25rem;align-items:center}
 .cambio:hover{background:var(--surface-2)}
 .cambio::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:transparent}
 .cambio.s-rec::before{background:var(--warn)}
@@ -1796,7 +1808,7 @@ main{padding:0;max-width:none;margin:0}
 <header>
   <h1>SAMCRO_OPS</h1>
   <nav class="nav">
-    <a href="/">Stock</a>
+    <a href="/panel">Stock</a>
     <a href="/cambios-admin" class="current">Cambios</a>
   </nav>
   <div class="actions"></div>
@@ -1837,6 +1849,12 @@ function setTab(el, estado){
   cargar();
 }
 
+function toggleCambio(id, ev){
+  if (ev && ev.target && ev.target.closest && ev.target.closest('button')) return;
+  var el = document.getElementById('cambio-' + id);
+  if (el) el.classList.toggle('open');
+}
+
 function fmtFecha(s){ if(!s) return ''; var d = new Date(s); return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }
 
 function estadoPill(e){
@@ -1864,21 +1882,30 @@ function cargar(){
         acciones = estadoPill(it.estado);
       }
       var cls = {pendiente_recepcion:'s-rec',pendiente_aprobacion:'s-apr',aprobado:'s-ok',rechazado:'s-no'}[it.estado] || '';
-      return '<div class="cambio ' + cls + '">' +
-        '<img src="' + esc(po.imagen||'') + '" onerror="this.style.background=\\'#222\\';this.removeAttribute(\\'src\\')">' +
-        '<div class="info"><strong>' + esc(po.nombre||'(sin nombre)') + '</strong>' +
-          '<p>Devuelve / Talle ' + esc(po.talle||'-') + '</p></div>' +
-        '<div class="arrow">\u2192</div>' +
-        '<div class="info"><strong>' + esc(it.remera_elegida_nombre||'') + '</strong>' +
-          '<p>Recibe / Talle ' + esc(it.remera_elegida_talle||'-') + (it.remera_elegida_color ? ' / ' + esc(it.remera_elegida_color) : '') + '</p></div>' +
-        '<div class="actions">' + acciones + '</div>' +
-        '<div class="meta">' +
-          '<span><strong>ORDEN</strong>#' + esc(it.orden_nro||'-') + '</span>' +
-          '<span><strong>CLIENTE</strong>' + esc(it.cliente_email||'-') + '</span>' +
-          '<span><strong>CREADO</strong>' + esc(fmtFecha(it.creado_en)) + '</span>' +
-          '<span style="color:' + (it.cliente_paga_envio ? 'var(--warn)' : 'var(--ink-mute)') + '"><strong>ENVIO</strong>' + (it.cliente_paga_envio ? 'Paga cliente' : 'Lo cubrimos') + '</span>' +
-          (it.orden_envio_tn_number ? '<span style="color:var(--accent-2)"><strong>ENVIO TN</strong>#' + esc(it.orden_envio_tn_number) + '</span>' : '') +
-          (it.motivo_rechazo ? '<span style="color:var(--err)"><strong>MOTIVO</strong>' + esc(it.motivo_rechazo) + '</span>' : '') +
+      return '<div class="cambio ' + cls + '" id="cambio-' + it.id + '">' +
+        '<div class="cambio-head" onclick="toggleCambio(' + it.id + ',event)">' +
+          '<span class="ord">' + esc(it.orden_nro||'-') + '</span>' +
+          '<span class="cli">' + esc(it.cliente_nombre || it.cliente_email || '-') + '</span>' +
+          estadoPill(it.estado) +
+          '<span class="date">' + esc(fmtFecha(it.creado_en)) + '</span>' +
+          '<span class="chev">\u25B6</span>' +
+        '</div>' +
+        '<div class="cambio-body">' +
+          '<div class="cambio-row">' +
+            '<img src="' + esc(po.imagen||'') + '" onerror="this.style.background=\\'#222\\';this.removeAttribute(\\'src\\')">' +
+            '<div class="info"><strong>' + esc(po.nombre||'(sin nombre)') + '</strong>' +
+              '<p>Devuelve / Talle ' + esc(po.talle||'-') + '</p></div>' +
+            '<div class="arrow">\u2192</div>' +
+            '<div class="info"><strong>' + esc(it.remera_elegida_nombre||'') + '</strong>' +
+              '<p>Recibe / Talle ' + esc(it.remera_elegida_talle||'-') + (it.remera_elegida_color ? ' / ' + esc(it.remera_elegida_color) : '') + '</p></div>' +
+            '<div class="actions">' + acciones + '</div>' +
+          '</div>' +
+          '<div class="meta">' +
+            '<span><strong>EMAIL</strong>' + esc(it.cliente_email||'-') + '</span>' +
+            '<span style="color:' + (it.cliente_paga_envio ? 'var(--warn)' : 'var(--ink-mute)') + '"><strong>ENVIO</strong>' + (it.cliente_paga_envio ? 'Paga cliente' : 'Sin costo (cubrimos)') + '</span>' +
+            (it.orden_envio_tn_number ? '<span style="color:var(--accent-2)"><strong>ENVIO TN</strong>#' + esc(it.orden_envio_tn_number) + '</span>' : '') +
+            (it.motivo_rechazo ? '<span style="color:var(--err)"><strong>MOTIVO</strong>' + esc(it.motivo_rechazo) + '</span>' : '') +
+          '</div>' +
         '</div>' +
       '</div>';
     }).join('');

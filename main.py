@@ -514,6 +514,22 @@ def rechazar_cambio(cambio_id: int, payload: RechazarPayload):
     return {"ok": True}
 
 
+@app.post("/api/cambios/{cambio_id}/marcar-recibido")
+def marcar_recibido(cambio_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT token_id, estado FROM cambios WHERE id=%s;", (cambio_id,))
+            c = cur.fetchone()
+            if not c:
+                raise HTTPException(status_code=404, detail="Cambio no encontrado")
+            if c["estado"] != "pendiente_recepcion":
+                raise HTTPException(status_code=409, detail=f"Estado actual: {c['estado']}")
+            cur.execute("UPDATE cambios SET estado='pendiente_aprobacion', actualizado_en=NOW() WHERE id=%s;", (cambio_id,))
+            cur.execute("INSERT INTO cambios_historial (cambio_id, token_id, accion, datos) VALUES (%s,%s,'recibido','{}');", (cambio_id, c["token_id"]))
+            conn.commit()
+    return {"ok": True}
+
+
 @app.get("/api/cambios/{cambio_id}/historial")
 def historial_cambio(cambio_id: int):
     with get_conn() as conn:
@@ -1230,6 +1246,7 @@ main{padding:1.5rem 2rem}
 <header>
   <h1>SAMCRO - Stock</h1>
   <div class="actions">
+    <a href="/cambios-admin" class="btn" style="background:#f97316;color:#fff;text-decoration:none;display:inline-block">Cambios <span id="badge-cambios" style="background:#fff;color:#f97316;border-radius:10px;padding:0 .4rem;margin-left:.25rem;font-size:.7rem">0</span></a>
     <button class="btn btn-white" onclick="abrirModal()">+ Nueva remera</button>
     <button class="btn btn-blue" onclick="document.getElementById('fi').click()">Importar Excel</button>
     <button class="btn btn-green" onclick="exportar()">Exportar Excel</button>
@@ -1348,6 +1365,10 @@ function cargar() {
       remeras = data;
       renderizar();
     });
+  fetch('/api/cambios/pendientes')
+    .then(function(r){ return r.json(); })
+    .then(function(data){ document.getElementById('badge-cambios').textContent = (data && data.length) || 0; })
+    .catch(function(){});
 }
 
 function renderizar() {
@@ -1555,6 +1576,167 @@ def subir_tabla_talles(payload: SubirImagenPayload):
 @app.get("/panel", response_class=HTMLResponse)
 def panel():
     return PANEL_HTML
+
+
+CAMBIOS_ADMIN_HTML = """<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Samcro - Gestion de Cambios</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5;color:#111}
+header{background:#111;color:#fff;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:1.1rem;font-weight:600;letter-spacing:.05em}
+.btn{padding:.5rem 1rem;border-radius:6px;border:none;cursor:pointer;font-size:.85rem;font-weight:500;text-decoration:none;display:inline-block}
+.btn-white{background:#fff;color:#111}
+.btn-green{background:#16a34a;color:#fff}
+.btn-red{background:#dc2626;color:#fff}
+.btn-blue{background:#2563eb;color:#fff}
+.btn-gray{background:#e5e5e5;color:#111}
+main{padding:1.5rem 2rem;max-width:1200px;margin:0 auto}
+.tabs{display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:1px solid #ddd}
+.tab{padding:.75rem 1.25rem;cursor:pointer;border:none;background:none;font-size:.9rem;color:#666;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:#111;border-bottom-color:#111}
+.tab .count{background:#f97316;color:#fff;border-radius:10px;padding:0 .5rem;margin-left:.4rem;font-size:.7rem}
+.list{display:flex;flex-direction:column;gap:1rem}
+.cambio{background:#fff;border-radius:8px;border:1px solid #e5e5e5;padding:1rem;display:grid;grid-template-columns:80px 1fr auto 1fr auto;gap:1rem;align-items:center}
+.cambio img{width:80px;height:80px;object-fit:cover;background:#f0f0f0;border-radius:6px}
+.cambio .info{font-size:.85rem}
+.cambio .info strong{display:block;margin-bottom:.2rem}
+.cambio .info p{color:#666;font-size:.78rem}
+.cambio .arrow{font-size:1.5rem;color:#f97316;text-align:center}
+.cambio .actions{display:flex;flex-direction:column;gap:.4rem}
+.meta{grid-column:1/-1;border-top:1px solid #f0f0f0;padding-top:.75rem;margin-top:.5rem;font-size:.75rem;color:#666;display:flex;gap:1.25rem;flex-wrap:wrap}
+.estado{display:inline-block;padding:.2rem .6rem;border-radius:20px;font-size:.7rem;font-weight:600}
+.e-rec{background:#fef3c7;color:#92400e}
+.e-apr{background:#dbeafe;color:#1e40af}
+.e-ok{background:#dcfce7;color:#15803d}
+.e-no{background:#fee2e2;color:#991b1b}
+.empty{text-align:center;padding:3rem;color:#999;background:#fff;border-radius:8px}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:420px}
+.modal h2{font-size:1rem;font-weight:600;margin-bottom:1rem}
+.modal textarea{width:100%;padding:.5rem;border:1px solid #ddd;border-radius:6px;font-size:.85rem;min-height:80px;resize:vertical;font-family:inherit}
+.modal-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
+@media(max-width:768px){.cambio{grid-template-columns:1fr;text-align:center}.cambio .arrow{transform:rotate(90deg)}}
+</style></head><body>
+<header>
+  <h1>SAMCRO - Cambios</h1>
+  <a href="/" class="btn btn-white">Volver al stock</a>
+</header>
+<main>
+  <div class="tabs">
+    <button class="tab active" data-estado="" onclick="setTab(this,'')">Pendientes <span class="count" id="c-pen">0</span></button>
+    <button class="tab" data-estado="pendiente_recepcion" onclick="setTab(this,'pendiente_recepcion')">Esperando recepcion</button>
+    <button class="tab" data-estado="pendiente_aprobacion" onclick="setTab(this,'pendiente_aprobacion')">Por aprobar</button>
+    <button class="tab" data-estado="aprobado" onclick="setTab(this,'aprobado')">Aprobados</button>
+    <button class="tab" data-estado="rechazado" onclick="setTab(this,'rechazado')">Rechazados</button>
+  </div>
+  <div id="lista" class="list"><p class="empty">Cargando...</p></div>
+</main>
+
+<div class="modal-bg" id="mrech">
+  <div class="modal">
+    <h2>Rechazar cambio</h2>
+    <p style="font-size:.8rem;color:#666;margin-bottom:.75rem">El cliente recibira este motivo. La remera reservada vuelve a estar disponible.</p>
+    <textarea id="mot" placeholder="Ej: la remera devuelta llego con manchas / talle incorrecto"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-gray" onclick="document.getElementById('mrech').classList.remove('open')">Cancelar</button>
+      <button class="btn btn-red" onclick="confirmarRechazo()">Rechazar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var ESTADO = '';
+var RECH_ID = null;
+
+function esc(s){ return (s===null||s===undefined)?'':String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function setTab(el, estado){
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  el.classList.add('active');
+  ESTADO = estado;
+  cargar();
+}
+
+function fmtFecha(s){ if(!s) return ''; var d = new Date(s); return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }
+
+function estadoPill(e){
+  var map = {pendiente_recepcion:['e-rec','Esperando recepcion'], pendiente_aprobacion:['e-apr','Por aprobar'], aprobado:['e-ok','Aprobado'], rechazado:['e-no','Rechazado']};
+  var v = map[e] || ['e-rec', e];
+  return '<span class="estado ' + v[0] + '">' + v[1] + '</span>';
+}
+
+function cargar(){
+  var url = '/api/cambios/pendientes' + (ESTADO ? '?estado=' + ESTADO : '');
+  fetch(url).then(function(r){ return r.json(); }).then(function(data){
+    if (!ESTADO) document.getElementById('c-pen').textContent = data.length;
+    var c = document.getElementById('lista');
+    if (!data.length) { c.innerHTML = '<p class="empty">No hay cambios en este estado.</p>'; return; }
+    c.innerHTML = data.map(function(it){
+      var po = it.producto_original || {};
+      var acciones = '';
+      if (it.estado === 'pendiente_recepcion') {
+        acciones = '<button class="btn btn-blue" onclick="recibido(' + it.id + ')">Marcar recibido</button>' +
+                   '<button class="btn btn-red" onclick="abrirRechazo(' + it.id + ')">Rechazar</button>';
+      } else if (it.estado === 'pendiente_aprobacion') {
+        acciones = '<button class="btn btn-green" onclick="aprobar(' + it.id + ')">Aprobar</button>' +
+                   '<button class="btn btn-red" onclick="abrirRechazo(' + it.id + ')">Rechazar</button>';
+      } else {
+        acciones = estadoPill(it.estado);
+      }
+      return '<div class="cambio">' +
+        '<img src="' + esc(po.imagen||'') + '" onerror="this.style.background=\\'#eee\\';this.removeAttribute(\\'src\\')">' +
+        '<div class="info"><strong>' + esc(po.nombre||'(sin nombre)') + '</strong>' +
+          '<p>Devuelve - Talle ' + esc(po.talle||'-') + '</p></div>' +
+        '<div class="arrow">\u2192</div>' +
+        '<div class="info"><strong>' + esc(it.remera_elegida_nombre||'') + '</strong>' +
+          '<p>Recibe - Talle ' + esc(it.remera_elegida_talle||'-') + (it.remera_elegida_color ? ' / ' + esc(it.remera_elegida_color) : '') + '</p></div>' +
+        '<div class="actions">' + acciones + '</div>' +
+        '<div class="meta">' +
+          '<span><strong>Orden:</strong> #' + esc(it.orden_nro||'-') + '</span>' +
+          '<span><strong>Cliente:</strong> ' + esc(it.cliente_email||'-') + '</span>' +
+          '<span><strong>Creado:</strong> ' + esc(fmtFecha(it.creado_en)) + '</span>' +
+          (it.motivo_rechazo ? '<span style="color:#dc2626"><strong>Motivo:</strong> ' + esc(it.motivo_rechazo) + '</span>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+  });
+}
+
+function recibido(id){
+  fetch('/api/cambios/' + id + '/marcar-recibido', {method:'POST'})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){ if(!x.ok){ alert(x.d.detail || 'Error'); return; } cargar(); });
+}
+
+function aprobar(id){
+  if (!confirm('Aprobar este cambio? Se descuenta la remera nueva del stock y se suma la devuelta.')) return;
+  fetch('/api/cambios/' + id + '/aprobar', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+    .then(function(r){ return r.json(); })
+    .then(function(){ cargar(); });
+}
+
+function abrirRechazo(id){ RECH_ID = id; document.getElementById('mot').value = ''; document.getElementById('mrech').classList.add('open'); }
+
+function confirmarRechazo(){
+  var m = document.getElementById('mot').value.trim();
+  if (!m) { alert('Escribi un motivo'); return; }
+  fetch('/api/cambios/' + RECH_ID + '/rechazar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({motivo: m})})
+    .then(function(r){ return r.json(); })
+    .then(function(){ document.getElementById('mrech').classList.remove('open'); cargar(); });
+}
+
+cargar();
+</script>
+</body></html>"""
+
+
+@app.get("/cambios-admin", response_class=HTMLResponse)
+def cambios_admin():
+    return CAMBIOS_ADMIN_HTML
 
 TABLA_TALLES_HTML = """<!DOCTYPE html>
 <html lang="es">

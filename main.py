@@ -248,6 +248,7 @@ async def vaciar_stock(confirmacion: str = ""):
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) AS n FROM stock;")
             antes = cur.fetchone()["n"]
+            cur.execute("UPDATE cambios SET remera_elegida_id = NULL WHERE remera_elegida_id IS NOT NULL;")
             cur.execute("DELETE FROM stock;")
             conn.commit()
     return {"ok": True, "borradas": antes}

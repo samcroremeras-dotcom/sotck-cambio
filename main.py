@@ -772,6 +772,11 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
 .picker-close{background:none;border:none;color:var(--white);font-size:1.4rem;cursor:pointer;padding:0;line-height:1}
 .picker-title{font-size:.9rem;font-weight:700;flex:1}
 .picker-body{flex:1;overflow-y:auto;padding:1rem;max-width:600px;width:100%;margin:0 auto}
+.picker-filters{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.75rem}
+.picker-input{padding:.7rem .85rem;border:1px solid var(--gray-300);border-radius:10px;font-size:.9rem;background:#fff;color:var(--black);width:100%;font-family:inherit}
+.picker-input:focus{outline:none;border-color:var(--black)}
+.picker-count{font-size:.78rem;color:var(--gray-500);margin:.35rem 0 .75rem;font-weight:500}
+@media(max-width:440px){.picker-filters{grid-template-columns:1fr}}
 .chips-wrap{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:1rem;scrollbar-width:none}
 .chips-wrap::-webkit-scrollbar{display:none}
 .chip{border:1.5px solid var(--gray-100);border-radius:20px;padding:.3rem .9rem;font-size:.78rem;font-weight:600;background:var(--white);color:var(--gray-600);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
@@ -847,7 +852,12 @@ header{background:var(--black);color:var(--white);padding:1rem 1.25rem;position:
     <button class="guia-link" style="color:#fff;margin:0;font-size:.75rem" onclick="abrirGuia()">Talles</button>
   </div>
   <div class="picker-body">
+    <div class="picker-filters">
+      <input id="picker-q" class="picker-input" placeholder="Buscar por nombre o color..." oninput="renderPickerGrid()">
+      <select id="picker-cat" class="picker-input" onchange="renderPickerGrid()"><option value="">Todas las categorias</option></select>
+    </div>
     <div class="chips-wrap" id="picker-chips"></div>
+    <div class="picker-count" id="picker-count"></div>
     <div class="grid" id="picker-grid"></div>
   </div>
 </div>
@@ -1077,9 +1087,16 @@ function actualizarBotonFinalizar() {
 function abrirPicker(index) {
   pickerIndex = index;
   talleFiltro = '';
-  var ts = {};
-  STOCK.forEach(function(r){ if (r.talle) ts[r.talle] = true; });
-  var talles = Object.keys(ts).sort();
+  document.getElementById('picker-q').value = '';
+  document.getElementById('picker-cat').value = '';
+  var ts = {}, cs = {};
+  var ORDEN_TALLE = ['XS','S','M','L','XL','XXL','XXXL','3XL','4XL','5XL','6XL','7XL'];
+  STOCK.forEach(function(r){
+    if (r.talle) ts[r.talle] = true;
+    if (r.categoria) cs[r.categoria] = true;
+  });
+  var talles = ORDEN_TALLE.filter(function(t){ return ts[t]; })
+    .concat(Object.keys(ts).filter(function(t){ return ORDEN_TALLE.indexOf(t) < 0; }).sort());
   var chips = document.getElementById('picker-chips');
   chips.innerHTML = '';
   function addChip(label, valor) {
@@ -1096,16 +1113,32 @@ function abrirPicker(index) {
   }
   addChip('Todos', '');
   talles.forEach(function(t){ addChip(t, t); });
+  var catSel = document.getElementById('picker-cat');
+  var cats = Object.keys(cs).sort(function(a,b){ return a.localeCompare(b,'es'); });
+  catSel.innerHTML = '<option value="">Todas las categorias</option>' +
+    cats.map(function(c){ return '<option>' + c.replace(/</g,'&lt;') + '</option>'; }).join('');
   renderPickerGrid();
   document.getElementById('picker').classList.add('open');
 }
 
 function renderPickerGrid() {
-  var filtradas = talleFiltro ? STOCK.filter(function(r){ return r.talle === talleFiltro; }) : STOCK;
+  var q = (document.getElementById('picker-q').value || '').trim().toLowerCase();
+  var cat = document.getElementById('picker-cat').value;
+  var filtradas = STOCK.filter(function(r){
+    if (talleFiltro && r.talle !== talleFiltro) return false;
+    if (cat && r.categoria !== cat) return false;
+    if (q) {
+      var hay = ((r.nombre||'') + ' ' + (r.color||'') + ' ' + (r.categoria||'')).toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+  var c = document.getElementById('picker-count');
+  if (c) c.textContent = filtradas.length + (filtradas.length === 1 ? ' opcion disponible' : ' opciones disponibles');
   var g = document.getElementById('picker-grid');
   g.innerHTML = '';
   if (!filtradas.length) {
-    g.innerHTML = '<p class="empty-state" style="grid-column:1/-1">No hay remeras disponibles</p>';
+    g.innerHTML = '<p class="empty-state" style="grid-column:1/-1">Sin resultados con estos filtros</p>';
     return;
   }
   filtradas.forEach(function(r){

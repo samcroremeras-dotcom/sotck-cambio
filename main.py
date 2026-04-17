@@ -1587,8 +1587,8 @@ main{padding:0}
     </span>
     <input type="file" id="fi-guia" accept="image/*" style="display:none" onchange="subirGuia(this)">
     <span class="tb-sep"></span>
-    <button class="btn" onclick="abrirTokenGlobal()" title="Generar link de cambio para un cliente">Generar link de cambio</button>
-    <button class="btn btn-green" onclick="abrirModal()">+ Nueva remera</button>
+    <button class="btn btn-green" onclick="abrirTokenGlobal()" title="Generar link de cambio para un cliente">Generar link de cambio</button>
+    <button class="btn" onclick="abrirModal()">+ Nueva remera</button>
     <input type="file" id="fi" accept=".xlsx" style="display:none" onchange="importar(this)">
   </div>
 </header>

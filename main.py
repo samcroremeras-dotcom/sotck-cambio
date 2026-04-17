@@ -672,7 +672,7 @@ def pagina_cambio(token: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT s.id, s.nombre, s.talle, s.color, s.imagen_url
+                SELECT s.id, s.nombre, s.talle, s.color, s.imagen_url, s.categoria
                 FROM stock s
                 LEFT JOIN (
                     SELECT remera_elegida_id, COUNT(*) AS reservadas

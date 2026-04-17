@@ -254,91 +254,383 @@ def pagina_cambio(token: str):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Elegí tu cambio - Samcro Remeras</title>
+<title>Elegí tu cambio · Samcro</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#f5f5f5;color:#111;min-height:100vh}
-header{background:#111;color:#fff;padding:1rem 1.5rem;text-align:center}
-header h1{font-size:1rem;font-weight:600;letter-spacing:.05em}
-header p{font-size:.8rem;color:#aaa;margin-top:2px}
-.vista{display:none;padding:1.5rem}
-.vista.activa{display:block}
-.filtros-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem}
-.filtros-header h2{font-size:1rem;font-weight:600}
-.guia-link{font-size:.8rem;color:#2563eb;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline}
-.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.25rem}
-.chip{border:1.5px solid #ddd;border-radius:20px;padding:.35rem .85rem;font-size:.8rem;font-weight:500;background:#fff;cursor:pointer;white-space:nowrap}
-.chip.sel{border-color:#111;background:#111;color:#fff}
-.chip.todos{border-color:#ddd}
-.grid-remeras{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
-.remera-card{background:#fff;border-radius:10px;border:2px solid transparent;overflow:hidden;cursor:pointer;transition:border-color .15s}
-.remera-card:active{opacity:.85}
-.remera-card img{width:100%;height:170px;object-fit:contain;background:#f5f5f5;padding:6px}
-.remera-card .info{padding:.5rem .6rem}
-.remera-card h3{font-size:.8rem;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.remera-card p{font-size:.72rem;color:#888}
-.sin-stock{color:#999;font-size:.85rem;grid-column:1/-1;padding:1.5rem 0;text-align:center}
-.confirm-header{display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem}
-.confirm-header button{background:none;border:none;color:#666;font-size:.85rem;cursor:pointer;padding:0;text-decoration:underline}
-.confirm-img{width:100%;max-height:220px;object-fit:contain;background:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem}
-.confirm-box{background:#fff;border-radius:10px;padding:.85rem 1rem;margin-bottom:.6rem;border:1px solid #e5e5e5}
-.confirm-box label{font-size:.72rem;color:#888;display:block;margin-bottom:2px}
-.confirm-box p{font-size:.95rem;font-weight:500}
-.btn-primary{width:100%;padding:.85rem;border-radius:8px;background:#111;color:#fff;border:none;font-size:.95rem;font-weight:500;cursor:pointer;margin-top:.5rem}
-.success{text-align:center;padding:3rem 1.5rem}
-.success-icon{width:64px;height:64px;border-radius:50%;background:#f0fdf4;border:2px solid #bbf7d0;display:flex;align-items:center;justify-content:center;margin:0 auto 1.25rem;font-size:1.6rem}
-.modal-talles{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:flex-end;justify-content:center}
-.modal-talles.open{display:flex}
-.modal-talles-inner{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:560px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column}
-.modal-talles-header{padding:.85rem 1rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e5e5}
-.modal-talles-header h3{font-size:.95rem;font-weight:600}
-.modal-talles-close{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#666;line-height:1}
-.modal-talles iframe{flex:1;border:none;min-height:75vh}
+:root{
+  --black:#0a0a0a;
+  --white:#fafafa;
+  --gray-50:#f4f4f4;
+  --gray-100:#e8e8e8;
+  --gray-400:#9a9a9a;
+  --gray-600:#555;
+  --green:#16a34a;
+  --green-light:#f0fdf4;
+  --radius:12px;
+  --radius-sm:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  background:var(--gray-50);
+  color:var(--black);
+  min-height:100vh;
+  overscroll-behavior:none;
+}
+
+/* ── HEADER ─────────────────────────────────────── */
+header{
+  background:var(--black);
+  color:var(--white);
+  padding:1rem 1.25rem .9rem;
+  position:sticky;
+  top:0;
+  z-index:10;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.header-brand{
+  font-size:.7rem;
+  font-weight:800;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--white);
+}
+.header-orden{
+  font-size:.7rem;
+  color:var(--gray-400);
+  letter-spacing:.04em;
+}
+
+/* ── SLIDE CONTAINER ─────────────────────────────── */
+.slide-container{
+  overflow:hidden;
+  position:relative;
+}
+.slide-track{
+  display:flex;
+  transition:transform .35s cubic-bezier(.4,0,.2,1);
+  will-change:transform;
+}
+.vista{
+  min-width:100vw;
+  padding:1.25rem 1rem 3rem;
+}
+
+/* ── FILTROS ─────────────────────────────────────── */
+.catalog-header{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  margin-bottom:1rem;
+}
+.catalog-title{
+  font-size:1.25rem;
+  font-weight:800;
+  letter-spacing:-.02em;
+  line-height:1.1;
+}
+.guia-link{
+  font-size:.75rem;
+  color:var(--gray-600);
+  background:none;
+  border:none;
+  cursor:pointer;
+  padding:0;
+  text-decoration:underline;
+  text-underline-offset:3px;
+  white-space:nowrap;
+}
+.chips-wrap{
+  display:flex;
+  gap:.35rem;
+  overflow-x:auto;
+  padding-bottom:.5rem;
+  margin-bottom:1.1rem;
+  scrollbar-width:none;
+}
+.chips-wrap::-webkit-scrollbar{display:none}
+.chip{
+  border:1.5px solid var(--gray-100);
+  border-radius:20px;
+  padding:.3rem .9rem;
+  font-size:.78rem;
+  font-weight:600;
+  background:var(--white);
+  color:var(--gray-600);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:all .15s;
+  flex-shrink:0;
+}
+.chip.sel{
+  border-color:var(--black);
+  background:var(--black);
+  color:var(--white);
+}
+
+/* ── PRODUCT GRID ────────────────────────────────── */
+.grid-remeras{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:.65rem;
+}
+@media(min-width:480px){.grid-remeras{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:700px){.grid-remeras{grid-template-columns:repeat(4,1fr)}}
+
+.card{
+  background:var(--white);
+  border-radius:var(--radius);
+  overflow:hidden;
+  cursor:pointer;
+  border:2px solid transparent;
+  transition:border-color .15s,transform .15s,box-shadow .15s;
+  position:relative;
+}
+.card:active{transform:scale(.97)}
+.card-img{
+  width:100%;
+  aspect-ratio:1/1;
+  object-fit:contain;
+  background:var(--gray-50);
+  padding:.5rem;
+  display:block;
+}
+.card-img-placeholder{
+  width:100%;
+  aspect-ratio:1/1;
+  background:var(--gray-100);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--gray-400);
+  font-size:.7rem;
+}
+.card-body{
+  padding:.55rem .65rem .65rem;
+}
+.card-name{
+  font-size:.78rem;
+  font-weight:700;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  margin-bottom:.15rem;
+}
+.card-meta{
+  font-size:.7rem;
+  color:var(--gray-400);
+}
+.card-talle-badge{
+  display:inline-block;
+  background:var(--gray-50);
+  border:1px solid var(--gray-100);
+  border-radius:4px;
+  font-size:.65rem;
+  font-weight:700;
+  padding:.1rem .35rem;
+  margin-top:.3rem;
+  letter-spacing:.03em;
+}
+.sin-stock{
+  grid-column:1/-1;
+  text-align:center;
+  padding:3rem 1rem;
+  color:var(--gray-400);
+  font-size:.85rem;
+}
+
+/* ── CONFIRM VIEW ────────────────────────────────── */
+.back-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:.35rem;
+  background:none;
+  border:none;
+  color:var(--gray-600);
+  font-size:.8rem;
+  cursor:pointer;
+  padding:.25rem 0;
+  margin-bottom:1.25rem;
+}
+.back-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.conf-img-wrap{
+  background:var(--white);
+  border-radius:var(--radius);
+  padding:1rem;
+  margin-bottom:1rem;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:200px;
+}
+.conf-img{
+  max-height:220px;
+  max-width:100%;
+  object-fit:contain;
+}
+.conf-section-title{
+  font-size:.65rem;
+  font-weight:700;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--gray-400);
+  margin-bottom:.6rem;
+}
+.conf-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:.7rem 0;
+  border-bottom:1px solid var(--gray-100);
+}
+.conf-row:last-of-type{border-bottom:none}
+.conf-row-label{font-size:.8rem;color:var(--gray-600)}
+.conf-row-value{font-size:.85rem;font-weight:700}
+.conf-card{
+  background:var(--white);
+  border-radius:var(--radius);
+  padding:.25rem 1rem;
+  margin-bottom:1.25rem;
+}
+.btn-confirm{
+  width:100%;
+  padding:1rem;
+  border-radius:var(--radius-sm);
+  background:var(--green);
+  color:var(--white);
+  border:none;
+  font-size:.95rem;
+  font-weight:700;
+  letter-spacing:.01em;
+  cursor:pointer;
+  transition:opacity .15s;
+}
+.btn-confirm:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── SUCCESS VIEW ────────────────────────────────── */
+.success-wrap{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:60vh;
+  text-align:center;
+  padding:2rem 1rem;
+}
+.success-ring{
+  width:72px;height:72px;border-radius:50%;
+  background:var(--green-light);
+  border:2px solid #bbf7d0;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 1.5rem;
+}
+.success-ring svg{width:32px;height:32px;stroke:var(--green);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.success-title{font-size:1.25rem;font-weight:800;letter-spacing:-.02em;margin-bottom:.6rem}
+.success-body{font-size:.85rem;color:var(--gray-600);line-height:1.7;max-width:280px}
+
+/* ── MODAL (bottom sheet) ────────────────────────── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:200;
+  align-items:flex-end;justify-content:center;
+}
+.modal-overlay.open{display:flex}
+.modal-sheet{
+  background:var(--white);
+  border-radius:20px 20px 0 0;
+  width:100%;max-width:560px;
+  max-height:90vh;
+  overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.modal-handle{
+  width:36px;height:4px;border-radius:2px;
+  background:var(--gray-100);
+  margin:.7rem auto .3rem;
+  flex-shrink:0;
+}
+.modal-head{
+  padding:.5rem 1rem .75rem;
+  display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid var(--gray-100);
+  flex-shrink:0;
+}
+.modal-head h3{font-size:.9rem;font-weight:700}
+.modal-close{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--gray-600);padding:.2rem}
+.modal-sheet iframe{flex:1;border:none;min-height:75vh}
 </style>
 </head>
 <body>
+
 <header>
-  <h1>SAMCRO REMERAS</h1>
-  <p>Orden #""" + str(orden_nro) + """</p>
+  <span class="header-brand">Samcro Remeras</span>
+  <span class="header-orden">Orden #""" + str(orden_nro) + """</span>
 </header>
 
-<!-- Vista 1: catálogo con filtro de talle -->
-<div id="v1" class="vista activa">
-  <div class="filtros-header" style="margin-top:1.25rem">
-    <h2>Elegí tu remera</h2>
-    <button class="guia-link" onclick="abrirGuia()">&#128210; Guía de talles</button>
-  </div>
-  <div class="chips" id="chips"></div>
-  <div class="grid-remeras" id="grid-remeras"></div>
-</div>
+<div class="slide-container">
+<div class="slide-track" id="track">
 
-<!-- Vista 2: confirmación -->
-<div id="v2" class="vista">
-  <div class="confirm-header" style="margin-top:1rem">
-    <button onclick="irVista(1)">&#8592; Cambiar elección</button>
+  <!-- Vista 0: catálogo -->
+  <div class="vista" id="v0">
+    <div class="catalog-header">
+      <h1 class="catalog-title">Elegí tu<br>nueva remera</h1>
+      <button class="guia-link" onclick="abrirGuia()">Ver guía de talles</button>
+    </div>
+    <div class="chips-wrap" id="chips"></div>
+    <div class="grid-remeras" id="grid-remeras"></div>
   </div>
-  <img id="conf-img" class="confirm-img" src="" alt="" onerror="this.style.display='none'">
-  <div class="confirm-box"><label>Remera elegida</label><p id="conf-nombre"></p></div>
-  <div class="confirm-box"><label>Talle</label><p id="conf-talle"></p></div>
-  <div class="confirm-box"><label>Color</label><p id="conf-color"></p></div>
-  <button class="btn-primary" onclick="confirmar()">Confirmar cambio</button>
-</div>
 
-<!-- Vista 3: éxito -->
-<div id="v3" class="vista">
-  <div class="success">
-    <div class="success-icon">&#10003;</div>
-    <h2 style="font-size:1.1rem;margin-bottom:.6rem">¡Listo! Recibimos tu elección</h2>
-    <p style="font-size:.85rem;color:#666;line-height:1.7">Te vamos a escribir por WhatsApp para coordinar el envío. ¡Gracias!</p>
+  <!-- Vista 1: confirmación -->
+  <div class="vista" id="v1">
+    <button class="back-btn" onclick="irVista(0)">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      Cambiar elección
+    </button>
+    <div class="conf-img-wrap">
+      <img id="conf-img" class="conf-img" src="" alt="" onerror="this.parentNode.style.display='none'">
+    </div>
+    <p class="conf-section-title">Tu elección</p>
+    <div class="conf-card">
+      <div class="conf-row">
+        <span class="conf-row-label">Remera</span>
+        <span class="conf-row-value" id="conf-nombre"></span>
+      </div>
+      <div class="conf-row">
+        <span class="conf-row-label">Talle</span>
+        <span class="conf-row-value" id="conf-talle"></span>
+      </div>
+      <div class="conf-row">
+        <span class="conf-row-label">Color</span>
+        <span class="conf-row-value" id="conf-color"></span>
+      </div>
+    </div>
+    <button class="btn-confirm" id="btn-confirmar" onclick="confirmar()">Confirmar cambio</button>
   </div>
-</div>
 
-<!-- Modal guía de talles (bottom sheet) -->
-<div class="modal-talles" id="modal-talles" onclick="cerrarGuia()">
-  <div class="modal-talles-inner" onclick="event.stopPropagation()">
-    <div class="modal-talles-header">
+  <!-- Vista 2: éxito -->
+  <div class="vista" id="v2">
+    <div class="success-wrap">
+      <div class="success-ring">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h2 class="success-title">¡Listo!</h2>
+      <p class="success-body">Recibimos tu elección. Te escribimos por WhatsApp para coordinar el envío.</p>
+    </div>
+  </div>
+
+</div><!-- /track -->
+</div><!-- /slide-container -->
+
+<!-- Modal guía de talles -->
+<div class="modal-overlay" id="modal-guia" onclick="cerrarGuia()">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-head">
       <h3>Guía de talles</h3>
-      <button class="modal-talles-close" onclick="cerrarGuia()">&#10005;</button>
+      <button class="modal-close" onclick="cerrarGuia()">&#10005;</button>
     </div>
     <iframe src="https://www.samcroremeras.com.ar/guia-de-talles/" title="Guía de talles"></iframe>
   </div>
@@ -351,40 +643,37 @@ var talleFiltro = '';
 var TOKEN = '""" + str(token_id) + """';
 
 function irVista(n) {
-  document.querySelectorAll('.vista').forEach(function(v){ v.classList.remove('activa'); });
-  document.getElementById('v' + n).classList.add('activa');
-  window.scrollTo(0, 0);
+  var track = document.getElementById('track');
+  track.style.transform = 'translateX(-' + (n * 100) + 'vw)';
+  window.scrollTo(0,0);
 }
 
-function abrirGuia() { document.getElementById('modal-talles').classList.add('open'); }
-function cerrarGuia() { document.getElementById('modal-talles').classList.remove('open'); }
+function abrirGuia(){ document.getElementById('modal-guia').classList.add('open'); }
+function cerrarGuia(){ document.getElementById('modal-guia').classList.remove('open'); }
 
 window.onload = function() {
   var ts = {};
   remeras.forEach(function(r){ ts[r.talle] = true; });
   var talles = Object.keys(ts).sort();
-  var chips = document.getElementById('chips');
-  var todos = document.createElement('button');
-  todos.className = 'chip todos sel';
-  todos.textContent = 'Todos';
-  todos.onclick = function(){ setFiltro('', todos); };
-  chips.appendChild(todos);
-  talles.forEach(function(t) {
+  var wrap = document.getElementById('chips');
+
+  function addChip(label, valor) {
     var b = document.createElement('button');
-    b.className = 'chip';
-    b.textContent = t;
-    b.onclick = function(){ setFiltro(t, b); };
-    chips.appendChild(b);
-  });
+    b.className = 'chip' + (valor === talleFiltro ? ' sel' : '');
+    b.textContent = label;
+    b.onclick = function(){
+      talleFiltro = valor;
+      document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('sel'); });
+      b.classList.add('sel');
+      renderGrid();
+    };
+    wrap.appendChild(b);
+  }
+
+  addChip('Todos', '');
+  talles.forEach(function(t){ addChip(t, t); });
   renderGrid();
 };
-
-function setFiltro(talle, btn) {
-  talleFiltro = talle;
-  document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('sel'); });
-  btn.classList.add('sel');
-  renderGrid();
-}
 
 function renderGrid() {
   var filtradas = talleFiltro
@@ -396,9 +685,16 @@ function renderGrid() {
     return;
   }
   g.innerHTML = filtradas.map(function(r) {
-    return '<div class="remera-card" onclick="selRemera(' + r.id + ')">' +
-      '<img src="' + r.imagen_url + '" onerror="this.style.display=\'none\'" alt="">' +
-      '<div class="info"><h3>' + r.nombre + '</h3><p>' + (r.color || '') + ' &middot; ' + r.talle + '</p></div></div>';
+    var img = r.imagen_url
+      ? '<img class="card-img" src="' + r.imagen_url + '" alt="' + r.nombre + '" onerror="this.outerHTML=\'<div class=card-img-placeholder>sin imagen</div>\'">'
+      : '<div class="card-img-placeholder">sin imagen</div>';
+    return '<div class="card" onclick="selRemera(' + r.id + ')">' +
+      img +
+      '<div class="card-body">' +
+        '<div class="card-name">' + r.nombre + '</div>' +
+        '<div class="card-meta">' + (r.color || '') + '</div>' +
+        '<span class="card-talle-badge">' + r.talle + '</span>' +
+      '</div></div>';
   }).join('');
 }
 
@@ -406,16 +702,24 @@ function selRemera(id) {
   remeraSel = remeras.find(function(r){ return r.id === id; });
   document.getElementById('conf-nombre').textContent = remeraSel.nombre;
   document.getElementById('conf-talle').textContent = remeraSel.talle;
-  document.getElementById('conf-color').textContent = remeraSel.color || '-';
+  document.getElementById('conf-color').textContent = remeraSel.color || '—';
   var img = document.getElementById('conf-img');
-  img.src = remeraSel.imagen_url || '';
-  img.style.display = remeraSel.imagen_url ? 'block' : 'none';
-  irVista(2);
+  var wrap = img.parentNode;
+  if (remeraSel.imagen_url) {
+    img.src = remeraSel.imagen_url;
+    wrap.style.display = 'flex';
+  } else {
+    wrap.style.display = 'none';
+  }
+  var btn = document.getElementById('btn-confirmar');
+  btn.disabled = false;
+  btn.textContent = 'Confirmar cambio';
+  irVista(1);
 }
 
 function confirmar() {
   if (!remeraSel) return;
-  var btn = document.querySelector('#v2 .btn-primary');
+  var btn = document.getElementById('btn-confirmar');
   btn.disabled = true;
   btn.textContent = 'Confirmando...';
   fetch('/api/confirmar-cambio', {
@@ -424,7 +728,7 @@ function confirmar() {
     body: JSON.stringify({token: TOKEN, remera_id: remeraSel.id})
   }).then(function(r){ return r.json(); })
     .then(function(data){
-      if (data.ok) { irVista(3); }
+      if (data.ok) { irVista(2); }
       else {
         btn.disabled = false;
         btn.textContent = 'Confirmar cambio';

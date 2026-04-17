@@ -1,11 +1,15 @@
 import os
 import io
 import uuid
+import time
+import hmac
+import hashlib
+import secrets
 import requests
 import json
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, UploadFile, File, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response, Form, Request
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 from psycopg2.extras import RealDictCursor
 import psycopg2
@@ -21,6 +25,119 @@ TN_STORE_ID = os.getenv("TN_STORE_ID")
 TN_ENVIO_PRODUCT_ID = os.getenv("TN_ENVIO_PRODUCT_ID")
 TN_ENVIO_VARIANT_ID = os.getenv("TN_ENVIO_VARIANT_ID")
 TN_ENVIO_PRECIO = os.getenv("TN_ENVIO_PRECIO", "0")
+
+# --- Auth admin ---
+ADMIN_USER = os.getenv("ADMIN_USER", "contacto@samcroremeras.com.ar")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+SESSION_SECRET = os.getenv("SESSION_SECRET") or secrets.token_hex(32)
+SESSION_COOKIE = "samcro_admin"
+SESSION_TTL = 8 * 3600  # 8 horas
+
+def _sign(val: str) -> str:
+    return hmac.new(SESSION_SECRET.encode(), val.encode(), hashlib.sha256).hexdigest()
+
+def _make_cookie() -> str:
+    exp = str(int(time.time()) + SESSION_TTL)
+    return exp + "." + _sign(exp)
+
+def _cookie_valido(val: str) -> bool:
+    if not val or "." not in val:
+        return False
+    exp, sig = val.split(".", 1)
+    if not hmac.compare_digest(_sign(exp), sig):
+        return False
+    try:
+        return int(exp) > time.time()
+    except Exception:
+        return False
+
+def _esta_autenticado(request: Request) -> bool:
+    return _cookie_valido(request.cookies.get(SESSION_COOKIE, ""))
+
+# Rutas publicas (no requieren login)
+_PUBLIC_EXACT = {"/login", "/logout", "/guia-talles.img", "/", "/docs", "/openapi.json", "/redoc"}
+
+def _es_publica(path: str) -> bool:
+    if path in _PUBLIC_EXACT:
+        return True
+    # Flujo del cliente
+    if path.startswith("/cambios/") and not path.startswith("/cambios-admin"):
+        return True
+    if path == "/api/cambios/seleccionar":
+        return True
+    if path.startswith("/static/"):
+        return True
+    return False
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if _es_publica(path):
+        return await call_next(request)
+    if _esta_autenticado(request):
+        return await call_next(request)
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": "No autenticado"}, status_code=401)
+    return RedirectResponse(url="/login", status_code=302)
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(error: int = 0):
+    err_html = '<p class="err">Usuario o contrase&ntilde;a incorrectos</p>' if error else ''
+    return """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ingresar - Samcro</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.box{width:100%;max-width:380px;background:#141414;border:1px solid #222;border-radius:14px;padding:2.25rem 1.75rem}
+h1{font-size:1.15rem;margin-bottom:.35rem;letter-spacing:.02em}
+p.sub{color:#888;font-size:.85rem;margin-bottom:1.75rem}
+label{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:.35rem;margin-top:1rem}
+input{width:100%;padding:.85rem 1rem;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:10px;color:#fff;font-size:.95rem;font-family:inherit}
+input:focus{outline:none;border-color:#10b981}
+button{width:100%;padding:1rem;margin-top:1.5rem;background:#10b981;color:#000;border:none;border-radius:10px;font-size:.95rem;font-weight:700;cursor:pointer;letter-spacing:.02em}
+button:hover{background:#0ea672}
+.err{background:#3a1212;border:1px solid #7a1e1e;color:#ffb4b4;padding:.7rem .9rem;border-radius:8px;font-size:.85rem;margin-bottom:1rem}
+.brand{color:#10b981;font-weight:700;letter-spacing:.08em;font-size:.7rem;text-transform:uppercase;margin-bottom:1.25rem;display:block}
+</style></head><body>
+<form class="box" method="post" action="/login">
+  <span class="brand">Samcro Remeras</span>
+  <h1>Panel de administraci&oacute;n</h1>
+  <p class="sub">Ingresa tus credenciales para continuar.</p>
+  """ + err_html + """
+  <label>Usuario</label>
+  <input name="usuario" type="email" autocomplete="username" required autofocus>
+  <label>Contrase&ntilde;a</label>
+  <input name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Ingresar</button>
+</form></body></html>"""
+
+@app.post("/login")
+def login_submit(usuario: str = Form(...), password: str = Form(...)):
+    if not ADMIN_PASSWORD:
+        return HTMLResponse(
+            "<h2 style='font-family:system-ui;padding:2rem'>Configuraci&oacute;n incompleta</h2>"
+            "<p style='font-family:system-ui;padding:0 2rem;color:#666'>Falta definir ADMIN_PASSWORD en las variables de entorno.</p>",
+            status_code=500,
+        )
+    ok_user = usuario.strip().lower() == ADMIN_USER.strip().lower()
+    ok_pass = hmac.compare_digest(password, ADMIN_PASSWORD)
+    if not (ok_user and ok_pass):
+        return RedirectResponse(url="/login?error=1", status_code=302)
+    r = RedirectResponse(url="/panel", status_code=302)
+    r.set_cookie(
+        SESSION_COOKIE, _make_cookie(),
+        httponly=True, secure=True, samesite="lax",
+        max_age=SESSION_TTL, path="/",
+    )
+    return r
+
+@app.post("/logout")
+@app.get("/logout")
+def logout():
+    r = RedirectResponse(url="/login", status_code=302)
+    r.delete_cookie(SESSION_COOKIE, path="/")
+    return r
 
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -1592,6 +1709,8 @@ main{padding:0}
     <button class="btn btn-green" onclick="abrirTokenGlobal()" title="Generar link de cambio para un cliente">Generar link de cambio</button>
     <button class="btn" onclick="abrirModal()">+ Nueva remera</button>
     <input type="file" id="fi" accept=".xlsx" style="display:none" onchange="importar(this)">
+    <span class="tb-sep"></span>
+    <a class="btn" href="/logout" title="Cerrar sesi&oacute;n" style="text-decoration:none">Salir</a>
   </div>
 </header>
 <main>
@@ -2190,7 +2309,7 @@ main{padding:0;max-width:none;margin:0}
     <a href="/panel">Stock</a>
     <a href="/cambios-admin" class="current">Cambios</a>
   </nav>
-  <div class="actions"></div>
+  <div class="actions"><a class="btn" href="/logout" style="text-decoration:none">Salir</a></div>
 </header>
 <main>
   <div class="tabs">

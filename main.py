@@ -283,8 +283,15 @@ header p{font-size:.8rem;color:#aaa;margin-top:2px}
 .confirm-box p{font-size:.95rem;font-weight:500;margin-top:2px}
 .success{text-align:center;padding:2rem 1.5rem}
 .success-icon{width:60px;height:60px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem}
-.timer{font-size:.75rem;color:#dc2626;text-align:center;margin-bottom:1rem}
 .volver{background:none;border:none;color:#666;font-size:.85rem;cursor:pointer;margin-bottom:1rem;padding:0}
+.guia-btn{font-size:.8rem;color:#2563eb;background:none;border:none;cursor:pointer;display:block;width:100%;text-align:center;margin-bottom:1.5rem;padding:0}
+.modal-talles{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center}
+.modal-talles.open{display:flex}
+.modal-talles-inner{background:#fff;border-radius:12px;width:95%;max-width:500px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column}
+.modal-talles-header{padding:.75rem 1rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e5e5}
+.modal-talles-header h3{font-size:.95rem;font-weight:600}
+.modal-talles-close{background:none;border:none;font-size:1.2rem;cursor:pointer;color:#666}
+.modal-talles iframe{flex:1;border:none;min-height:70vh}
 </style>
 </head>
 <body>
@@ -297,7 +304,17 @@ header p{font-size:.8rem;color:#aaa;margin-top:2px}
   <p class="paso-titulo" style="margin-top:1rem">Que talle usas?</p>
   <p class="paso-sub">Si no estas seguro usa la guia de medidas.</p>
   <div class="talles" id="talles-grid"></div>
-  <a class="guia-link" href="https://www.samcroremeras.com.ar/guia-de-talles/" target="_blank">No se mi talle, ver guia de medidas</a>
+  <button class="guia-btn" onclick="abrirGuia()">No se mi talle, ver guia de medidas</button>
+
+<div class="modal-talles" id="modal-talles">
+  <div class="modal-talles-inner">
+    <div class="modal-talles-header">
+      <h3>Guia de talles</h3>
+      <button class="modal-talles-close" onclick="cerrarGuia()">&#10005;</button>
+    </div>
+    <iframe src="https://www.samcroremeras.com.ar/guia-de-talles/" title="Guia de talles"></iframe>
+  </div>
+</div>
   <button class="btn-primary" id="btn-ver" onclick="verOpciones()" disabled>Ver opciones disponibles</button>
 </div>
 
@@ -312,7 +329,6 @@ header p{font-size:.8rem;color:#aaa;margin-top:2px}
   <button class="volver" onclick="irPaso(2)">volver</button>
   <p class="paso-titulo">Confirma tu eleccion</p>
   <p class="paso-sub" style="margin-bottom:1rem">Una vez confirmado te avisamos cuando llega.</p>
-  <div class="timer" id="timer"></div>
   <div class="confirm-box"><label>Remera elegida</label><p id="conf-nombre"></p></div>
   <div class="confirm-box"><label>Talle</label><p id="conf-talle"></p></div>
   <div class="confirm-box"><label>Color</label><p id="conf-color"></p></div>
@@ -331,7 +347,6 @@ header p{font-size:.8rem;color:#aaa;margin-top:2px}
 var remeras = """ + remeras_json + """;
 var tallesSel = '';
 var remeraSel = null;
-var timerInterval = null;
 var TOKEN = '""" + str(token_id) + """';
 window.onload = function() {
   var ts = {};
@@ -351,6 +366,9 @@ window.onload = function() {
     g.appendChild(b);
   });
 };
+
+function abrirGuia() { document.getElementById('modal-talles').classList.add('open'); }
+function cerrarGuia() { document.getElementById('modal-talles').classList.remove('open'); }
 
 function irPaso(n) {
   document.querySelectorAll('.paso').forEach(function(p){ p.classList.remove('activo'); });
@@ -380,20 +398,7 @@ function selRemera(id, el) {
   document.getElementById('conf-nombre').textContent = remeraSel.nombre;
   document.getElementById('conf-talle').textContent = remeraSel.talle;
   document.getElementById('conf-color').textContent = remeraSel.color || '-';
-  iniciarTimer();
   setTimeout(function(){ irPaso(3); }, 300);
-}
-
-function iniciarTimer() {
-  var seg = 600;
-  clearInterval(timerInterval);
-  timerInterval = setInterval(function() {
-    seg--;
-    var m = Math.floor(seg / 60);
-    var s = seg % 60;
-    document.getElementById('timer').textContent = 'Esta seleccion se reserva por ' + m + ':' + (s < 10 ? '0' : '') + s + ' minutos';
-    if (seg <= 0) { clearInterval(timerInterval); }
-  }, 1000);
 }
 
 function confirmar() {
@@ -415,19 +420,20 @@ function confirmar() {
 @app.post("/api/confirmar-cambio")
 def confirmar_cambio(data: dict):
     token = data.get("token")
-    remeras_ids = data.get("remeras_ids", [])
+    remera_id = data.get("remera_id")
+    if not token or not remera_id:
+        return {"ok": False, "error": "datos incompletos"}
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM tokens_cambio WHERE token_id=%s;", (token,))
             t = cur.fetchone()
             if not t or t["usado"] or datetime.now() > t["expira_at"]:
                 return {"ok": False, "error": "token invalido"}
-            if len(remeras_ids) != t["cantidad_cambios"]:
-                return {"ok": False, "error": "cantidad incorrecta"}
-            cur.execute("UPDATE tokens_cambio SET usado=TRUE, remeras_elegidas=%s WHERE token_id=%s;",
-                (json.dumps(remeras_ids), token))
-            for rid in remeras_ids:
-                cur.execute("UPDATE stock SET cantidad = cantidad - 1 WHERE id=%s;", (rid,))
+            cur.execute(
+                "UPDATE tokens_cambio SET usado=TRUE, remera_elegida_id=%s WHERE token_id=%s;",
+                (remera_id, token)
+            )
+            cur.execute("UPDATE stock SET cantidad = cantidad - 1 WHERE id=%s AND cantidad > 0;", (remera_id,))
             conn.commit()
     return {"ok": True}    
 

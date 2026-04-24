@@ -63,7 +63,7 @@ def _es_publica(path: str) -> bool:
     # Flujo del cliente
     if path.startswith("/cambios/") and not path.startswith("/cambios-admin"):
         return True
-    if path == "/api/cambios/seleccionar":
+    if path in ("/api/cambios/seleccionar", "/api/validar-acceso"):
         return True
     if path.startswith("/static/"):
         return True
